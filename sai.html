@@ -1,0 +1,955 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Sai v1 - Stone Stacking Journey</title>
+  <style>
+    :root {
+      --bg: #d9d3c4;
+      --panel: rgba(16, 20, 24, 0.78);
+      --text: #f3f5f7;
+      --muted: #c8d0d8;
+      --accent: #f0b95f;
+      --good: #7ed37b;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #111;
+      color: var(--text);
+      font-family: "Segoe UI", "Noto Sans JP", sans-serif;
+    }
+
+    #app {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      grid-template-rows: 1fr;
+    }
+
+    #gameCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      background: var(--bg);
+      touch-action: none;
+    }
+
+    #ui {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+    }
+
+    .panel {
+      pointer-events: auto;
+      width: min(720px, 94vw);
+      background: var(--panel);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 16px;
+      padding: 18px 18px 16px;
+      backdrop-filter: blur(6px);
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+    }
+
+    .panel h1, .panel h2 {
+      margin: 0 0 10px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .panel p {
+      margin: 0 0 14px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    button.primary {
+      background: var(--accent);
+      color: #1d170c;
+      border-color: rgba(0, 0, 0, 0.08);
+    }
+
+    .card {
+      flex: 1 1 210px;
+      min-width: 200px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 12px;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .card h3 {
+      margin: 0 0 6px;
+      font-size: 18px;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .tiny {
+      font-size: 12px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <canvas id="gameCanvas"></canvas>
+  </div>
+  <div id="ui" aria-live="polite"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.20.0/matter.min.js"></script>
+  <script>
+    (() => {
+      const {
+        Engine,
+        World,
+        Bodies,
+        Body,
+        Composite,
+        Vector,
+        Vertices
+      } = Matter;
+
+      const STATE = {
+        TITLE: "TITLE",
+        MAP: "MAP",
+        PLAY: "PLAY",
+        RESULT: "RESULT"
+      };
+
+      const TUNING = {
+        gravityY: 1.0,
+        restitution: 0.02,
+        densityMin: 0.002,
+        densityMax: 0.004,
+        stableV: 0.12,
+        stableW: 0.08,
+        stableTime: 0.9,
+        releaseVelScale: 0.2,
+        releaseAngScale: 0.3,
+        maxRerolls: 3,
+        stoneSidesMin: 6,
+        stoneSidesMax: 10,
+        baseWidth: 176,
+        baseHeight: 18,
+        groundMargin: 60,
+        fixedDeltaMs: 1000 / 60
+      };
+
+      const LOCATION_CONFIG = {
+        river: {
+          key: "river",
+          name: "河原",
+          envLabel: "風: 弱",
+          bgTop: "#d7d2c6",
+          bgBottom: "#c2baa8",
+          stoneFlatness: 0.45,
+          stoneFriction: 0.7,
+          stoneDensity: 0.0028,
+          multiplier: 1.0,
+          windMin: 2.0,
+          windMax: 4.0,
+          windForce: 0.00025,
+          gustChance: 0.05,
+          wave: 0
+        },
+        mountain: {
+          key: "mountain",
+          name: "山",
+          envLabel: "風: 強",
+          bgTop: "#b9c2c6",
+          bgBottom: "#9ea7ab",
+          stoneFlatness: 0.72,
+          stoneFriction: 0.9,
+          stoneDensity: 0.0032,
+          multiplier: 1.2,
+          windMin: 1.8,
+          windMax: 3.5,
+          windForce: 0.00046,
+          gustChance: 0.26,
+          wave: 0
+        },
+        coast: {
+          key: "coast",
+          name: "海岸",
+          envLabel: "風: 中 / 波あり",
+          bgTop: "#c3d6dc",
+          bgBottom: "#9fbcc5",
+          stoneFlatness: 0.52,
+          stoneFriction: 0.5,
+          stoneDensity: 0.0027,
+          multiplier: 1.1,
+          windMin: 2.0,
+          windMax: 3.8,
+          windForce: 0.00034,
+          gustChance: 0.12,
+          wave: 1
+        }
+      };
+
+      const STORAGE_KEY = "sai_v1_data";
+
+      class SaiGame {
+        constructor() {
+          this.canvas = document.getElementById("gameCanvas");
+          this.ctx = this.canvas.getContext("2d");
+          this.ui = document.getElementById("ui");
+
+          this.state = STATE.TITLE;
+          this.location = null;
+          this.engine = null;
+          this.world = null;
+          this.ground = null;
+          this.base = null;
+          this.leftWall = null;
+          this.rightWall = null;
+
+          this.currentStone = null;
+          this.stones = [];
+          this.stackCount = 0;
+          this.stabilityBonus = 0;
+          this.rerollsLeft = TUNING.maxRerolls;
+          this.points = 0;
+          this.bestByLocation = { river: 0, mountain: 0, coast: 0 };
+          this.lastRunScore = 0;
+          this.lastRunPoints = 0;
+
+          this.dragging = false;
+          this.dragOffset = { x: 0, y: 0 };
+          this.pointer = { x: 0, y: 0 };
+          this.stoneReleased = false;
+          this.stableTimer = 0;
+          this.isPaused = false;
+
+          this.nextWindAt = 0;
+          this.lastTimestamp = 0;
+          this.accumulator = 0;
+          this.resizeQueued = false;
+
+          this.loadSave();
+          this.resize();
+          this.bindEvents();
+          this.setState(STATE.TITLE);
+          requestAnimationFrame((t) => this.loop(t));
+        }
+
+        bindEvents() {
+          window.addEventListener("resize", () => {
+            this.resizeQueued = true;
+          });
+
+          this.canvas.addEventListener("pointerdown", (e) => this.onPointerDown(e));
+          this.canvas.addEventListener("pointermove", (e) => this.onPointerMove(e));
+          this.canvas.addEventListener("pointerup", () => this.onPointerUp());
+          this.canvas.addEventListener("pointercancel", () => this.onPointerUp());
+          this.canvas.addEventListener("wheel", (e) => this.onWheel(e), { passive: false });
+
+          window.addEventListener("keydown", (e) => this.onKeyDown(e));
+        }
+
+        loadSave() {
+          try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) return;
+            const data = JSON.parse(raw);
+            this.points = Number.isFinite(data.points) ? data.points : 0;
+            this.bestByLocation = Object.assign(this.bestByLocation, data.bestRecordsByLocation || {});
+          } catch (_err) {
+            this.points = 0;
+          }
+        }
+
+        saveData() {
+          const data = {
+            points: this.points,
+            bestRecordsByLocation: this.bestByLocation
+          };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        }
+
+        resize() {
+          const ratio = Math.min(window.devicePixelRatio || 1, 2);
+          const w = window.innerWidth;
+          const h = window.innerHeight;
+          this.canvas.width = Math.floor(w * ratio);
+          this.canvas.height = Math.floor(h * ratio);
+          this.canvas.style.width = w + "px";
+          this.canvas.style.height = h + "px";
+          this.ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+          this.width = w;
+          this.height = h;
+          this.groundY = this.height - TUNING.groundMargin;
+          this.baseY = this.groundY - 16;
+          this.baseCenterX = this.width * 0.5;
+
+          if (this.world) {
+            this.rebuildBoundaries();
+          }
+        }
+
+        setState(next) {
+          this.state = next;
+          this.renderOverlay();
+        }
+
+        startRun(locationKey) {
+          this.location = LOCATION_CONFIG[locationKey];
+          this.stackCount = 0;
+          this.stabilityBonus = 0;
+          this.lastRunScore = 0;
+          this.lastRunPoints = 0;
+          this.rerollsLeft = TUNING.maxRerolls;
+          this.stones = [];
+          this.currentStone = null;
+          this.dragging = false;
+          this.stableTimer = 0;
+          this.stoneReleased = false;
+          this.isPaused = false;
+          this.nextWindAt = 0;
+
+          this.engine = Engine.create({
+            positionIterations: 8,
+            velocityIterations: 6,
+            constraintIterations: 2
+          });
+          this.world = this.engine.world;
+          this.engine.gravity.y = TUNING.gravityY;
+
+          this.rebuildBoundaries();
+          this.spawnStone();
+          this.setState(STATE.PLAY);
+        }
+
+        rebuildBoundaries() {
+          if (!this.world) return;
+          if (this.ground) World.remove(this.world, [this.ground, this.base, this.leftWall, this.rightWall], true);
+
+          this.ground = Bodies.rectangle(this.width / 2, this.groundY + 22, this.width + 180, 48, {
+            isStatic: true,
+            friction: 0.9
+          });
+          this.base = Bodies.rectangle(this.baseCenterX, this.baseY, TUNING.baseWidth, TUNING.baseHeight, {
+            isStatic: true,
+            friction: 0.95,
+            label: "base"
+          });
+          this.leftWall = Bodies.rectangle(-28, this.height / 2, 56, this.height * 2, { isStatic: true });
+          this.rightWall = Bodies.rectangle(this.width + 28, this.height / 2, 56, this.height * 2, { isStatic: true });
+          World.add(this.world, [this.ground, this.base, this.leftWall, this.rightWall]);
+        }
+
+        spawnStone() {
+          const cfg = this.location;
+          const n = this.randInt(TUNING.stoneSidesMin, TUNING.stoneSidesMax);
+          const radius = this.randRange(30, 48);
+          const verts = this.generateStoneVertices(n, radius, cfg.stoneFlatness);
+          const density = this.clamp(
+            cfg.stoneDensity + this.randRange(-0.00028, 0.0003),
+            TUNING.densityMin,
+            TUNING.densityMax
+          );
+
+          const body = Bodies.fromVertices(this.baseCenterX, 130, [verts], {
+            friction: this.clamp(cfg.stoneFriction + this.randRange(-0.1, 0.08), 0.3, 1.1),
+            restitution: TUNING.restitution,
+            density,
+            chamfer: 3,
+            label: "stone",
+            render: { visible: false }
+          }, true);
+
+          const stone = Array.isArray(body) ? body[0] : body;
+          stone.plugin = stone.plugin || {};
+          stone.plugin.skinId = "default";
+          stone.plugin.colorSeed = this.randRange(0.7, 1.25);
+
+          Body.setStatic(stone, true);
+          Body.setVelocity(stone, { x: 0, y: 0 });
+          Body.setAngularVelocity(stone, 0);
+          this.currentStone = stone;
+          this.stones.push(stone);
+          this.stoneReleased = false;
+          this.stableTimer = 0;
+          World.add(this.world, stone);
+        }
+
+        rerollStone() {
+          if (!this.currentStone || this.stoneReleased || this.rerollsLeft <= 0) return;
+          const pos = { x: this.currentStone.position.x, y: this.currentStone.position.y };
+          World.remove(this.world, this.currentStone, true);
+          this.stones = this.stones.filter((s) => s.id !== this.currentStone.id);
+          this.rerollsLeft -= 1;
+          this.spawnStone();
+          Body.setPosition(this.currentStone, pos);
+        }
+
+        releaseStone() {
+          if (!this.currentStone || this.stoneReleased) return;
+          this.dragging = false;
+          Body.setStatic(this.currentStone, false);
+          Body.setVelocity(this.currentStone, Vector.mult(this.currentStone.velocity, TUNING.releaseVelScale));
+          Body.setAngularVelocity(this.currentStone, this.currentStone.angularVelocity * TUNING.releaseAngScale);
+          this.stoneReleased = true;
+          this.stableTimer = 0;
+        }
+
+        onPointerDown(e) {
+          if (this.state !== STATE.PLAY || this.isPaused || !this.currentStone || this.stoneReleased) return;
+          const p = this.getPointerPosition(e);
+          this.pointer = p;
+          if (Vertices.contains(this.currentStone.vertices, p)) {
+            this.dragging = true;
+            this.dragOffset.x = this.currentStone.position.x - p.x;
+            this.dragOffset.y = this.currentStone.position.y - p.y;
+            this.canvas.setPointerCapture(e.pointerId);
+          }
+        }
+
+        onPointerMove(e) {
+          if (this.state !== STATE.PLAY || !this.currentStone || this.stoneReleased) return;
+          this.pointer = this.getPointerPosition(e);
+          if (!this.dragging || this.isPaused) return;
+          const baseHalf = TUNING.baseWidth * 0.5;
+          const target = {
+            x: this.clamp(this.pointer.x + this.dragOffset.x, this.baseCenterX - baseHalf + 12, this.baseCenterX + baseHalf - 12),
+            y: this.clamp(this.pointer.y + this.dragOffset.y, 72, this.height - 140)
+          };
+          Body.setPosition(this.currentStone, target);
+        }
+
+        onPointerUp() {
+          this.dragging = false;
+        }
+
+        onWheel(e) {
+          if (this.state !== STATE.PLAY || !this.currentStone || this.stoneReleased || this.isPaused) return;
+          e.preventDefault();
+          const sign = Math.sign(e.deltaY);
+          Body.rotate(this.currentStone, sign > 0 ? 0.08 : -0.08);
+        }
+
+        onKeyDown(e) {
+          if (this.state !== STATE.PLAY) return;
+          if (e.code === "Space") {
+            e.preventDefault();
+            this.releaseStone();
+          } else if (e.code === "KeyQ") {
+            if (this.currentStone && !this.stoneReleased && !this.isPaused) Body.rotate(this.currentStone, -0.06);
+          } else if (e.code === "KeyE") {
+            if (this.currentStone && !this.stoneReleased && !this.isPaused) Body.rotate(this.currentStone, 0.06);
+          } else if (e.code === "KeyR") {
+            this.rerollStone();
+          } else if (e.code === "Escape") {
+            this.isPaused = !this.isPaused;
+          }
+        }
+
+        update(dt) {
+          if (this.state !== STATE.PLAY || !this.engine || this.isPaused) return;
+
+          this.applyEnvironmentForces(dt);
+          Engine.update(this.engine, dt * 1000);
+          this.checkFail();
+          this.updateStability(dt);
+        }
+
+        applyEnvironmentForces(_dt) {
+          const now = performance.now() * 0.001;
+          if (now > this.nextWindAt) {
+            const cfg = this.location;
+            const span = this.randRange(cfg.windMin, cfg.windMax);
+            this.nextWindAt = now + span;
+            const isGust = Math.random() < cfg.gustChance;
+            const dir = Math.random() < 0.5 ? -1 : 1;
+            const forceX = cfg.windForce * (isGust ? 2.0 : 1.0) * dir;
+            for (const body of this.stones) {
+              if (!body.isStatic) {
+                Body.applyForce(body, body.position, { x: forceX * body.mass, y: 0 });
+              }
+            }
+          }
+
+          if (this.location.wave) {
+            const t = performance.now() * 0.001;
+            const waveValue = Math.sin(t * 2.35) * 0.000085;
+            for (const body of this.stones) {
+              if (!body.isStatic) {
+                Body.applyForce(body, body.position, { x: 0, y: waveValue * body.mass });
+              }
+            }
+          }
+        }
+
+        updateStability(dt) {
+          if (!this.currentStone || !this.stoneReleased) return;
+          const b = this.currentStone;
+          const touching = this.hasSupportingContact(b);
+          const stableSpeed = b.speed < TUNING.stableV;
+          const stableAngular = Math.abs(b.angularVelocity) < TUNING.stableW;
+          if (touching && stableSpeed && stableAngular) {
+            this.stableTimer += dt;
+          } else {
+            this.stableTimer = Math.max(0, this.stableTimer - dt * 0.35);
+          }
+
+          if (this.stableTimer >= TUNING.stableTime) {
+            this.stackCount += 1;
+            this.stabilityBonus += Math.max(0, Math.floor((TUNING.stableTime + 0.8 - this.stableTimer) * 60));
+            this.currentStone = null;
+            this.stoneReleased = false;
+            this.stableTimer = 0;
+            this.spawnStone();
+          }
+        }
+
+        hasSupportingContact(stone) {
+          const pairs = this.engine.pairs.list;
+          for (const pair of pairs) {
+            if (!pair.isActive) continue;
+            const a = pair.bodyA;
+            const b = pair.bodyB;
+            const involve = a.id === stone.id || b.id === stone.id;
+            if (!involve) continue;
+            const other = a.id === stone.id ? b : a;
+            if (other.id === this.base.id || other.label === "stone") {
+              return true;
+            }
+          }
+          return false;
+        }
+
+        hasContactWith(body, targetBody) {
+          if (!body || !targetBody) return false;
+          const pairs = this.engine.pairs.list;
+          for (const pair of pairs) {
+            if (!pair.isActive) continue;
+            const a = pair.bodyA;
+            const b = pair.bodyB;
+            if ((a.id === body.id && b.id === targetBody.id) || (b.id === body.id && a.id === targetBody.id)) {
+              return true;
+            }
+          }
+          return false;
+        }
+
+        checkFail() {
+          if (
+            this.currentStone &&
+            this.stoneReleased &&
+            this.stackCount >= 1 &&
+            this.hasContactWith(this.currentStone, this.ground)
+          ) {
+            this.finishRun();
+            return;
+          }
+
+          for (const body of this.stones) {
+            if (body.position.y > this.height + 240) {
+              this.finishRun();
+              return;
+            }
+          }
+        }
+
+        finishRun() {
+          const mult = this.location ? this.location.multiplier : 1;
+          const score = Math.floor(this.stackCount * 100 * mult + this.stabilityBonus);
+          const earned = Math.max(0, Math.floor(score / 100));
+          this.lastRunScore = score;
+          this.lastRunPoints = earned;
+          this.points += earned;
+          if (this.location) {
+            this.bestByLocation[this.location.key] = Math.max(this.bestByLocation[this.location.key] || 0, this.stackCount);
+          }
+          this.saveData();
+          this.setState(STATE.RESULT);
+        }
+
+        getStableGauge() {
+          if (!this.currentStone || !this.stoneReleased) return 0;
+          const b = this.currentStone;
+          const speedRatio = 1 - this.clamp(b.speed / TUNING.stableV, 0, 1);
+          const angRatio = 1 - this.clamp(Math.abs(b.angularVelocity) / TUNING.stableW, 0, 1);
+          const timeRatio = this.clamp(this.stableTimer / TUNING.stableTime, 0, 1);
+          const contact = this.hasSupportingContact(b) ? 1 : 0.2;
+          return this.clamp((speedRatio * 0.35 + angRatio * 0.35 + timeRatio * 0.2 + contact * 0.1) * 100, 0, 100);
+        }
+
+        draw() {
+          this.drawBackground();
+          if (this.state === STATE.PLAY || this.state === STATE.RESULT) {
+            this.drawGround();
+            this.drawStones();
+            this.drawHud();
+          }
+        }
+
+        drawBackground() {
+          const ctx = this.ctx;
+          const grad = ctx.createLinearGradient(0, 0, 0, this.height);
+          const top = this.location ? this.location.bgTop : "#d8d8d8";
+          const bottom = this.location ? this.location.bgBottom : "#bdbdbd";
+          grad.addColorStop(0, top);
+          grad.addColorStop(1, bottom);
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, this.width, this.height);
+
+          ctx.globalAlpha = 0.1;
+          for (let i = 0; i < 46; i += 1) {
+            const y = (i / 46) * this.height;
+            ctx.fillStyle = i % 2 ? "#fff" : "#000";
+            ctx.fillRect(0, y, this.width, 1);
+          }
+          ctx.globalAlpha = 1;
+        }
+
+        drawGround() {
+          const ctx = this.ctx;
+          ctx.fillStyle = "rgba(56, 54, 49, 0.24)";
+          ctx.fillRect(0, this.groundY + 2, this.width, this.height - this.groundY);
+          ctx.fillStyle = "rgba(255, 255, 255, 0.18)";
+          ctx.fillRect(0, this.groundY - 1, this.width, 2);
+
+          const baseHalf = TUNING.baseWidth * 0.5;
+          ctx.fillStyle = "rgba(32, 33, 35, 0.78)";
+          ctx.fillRect(this.baseCenterX - baseHalf, this.baseY - TUNING.baseHeight * 0.5, TUNING.baseWidth, TUNING.baseHeight);
+          ctx.fillStyle = "rgba(255, 255, 255, 0.22)";
+          ctx.fillRect(this.baseCenterX - baseHalf, this.baseY - TUNING.baseHeight * 0.5, TUNING.baseWidth, 2);
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
+          ctx.strokeRect(this.baseCenterX - baseHalf, 0, TUNING.baseWidth, this.groundY);
+        }
+
+        drawStones() {
+          const bodies = this.stones.slice().sort((a, b) => a.position.y - b.position.y);
+          for (const b of bodies) {
+            this.drawDropShadow(b);
+          }
+          for (const b of bodies) {
+            this.drawStonePseudo3D(b);
+            this.drawContactShadow(b);
+          }
+        }
+
+        drawDropShadow(body) {
+          const ctx = this.ctx;
+          const dy = Math.max(0, this.groundY - body.position.y - 10);
+          const t = this.clamp(dy / (this.height * 0.7), 0, 1);
+          const w = 54 - t * 26;
+          const h = 15 - t * 7;
+          const alpha = 0.2 - t * 0.12;
+          ctx.save();
+          ctx.translate(body.position.x, this.groundY + 3);
+          ctx.scale(1, 0.55);
+          ctx.fillStyle = `rgba(25,22,20,${alpha.toFixed(3)})`;
+          ctx.beginPath();
+          ctx.ellipse(0, 0, w, h, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        drawContactShadow(body) {
+          const touching = this.hasSupportingContact(body);
+          if (!touching) return;
+          const ctx = this.ctx;
+          ctx.save();
+          ctx.translate(body.position.x, body.position.y + 20);
+          ctx.scale(1, 0.5);
+          ctx.fillStyle = "rgba(12,12,12,0.23)";
+          ctx.beginPath();
+          ctx.ellipse(0, 0, 28, 10, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        drawStonePseudo3D(body) {
+          const ctx = this.ctx;
+          const verts = body.vertices;
+          if (!verts || verts.length < 3) return;
+          const offset = { x: -8, y: 9 };
+          const topCol = this.pickStoneColor(body);
+          const sideCol = this.shadeColor(topCol, 0.62);
+          const lineCol = this.shadeColor(topCol, 0.44);
+
+          for (let i = 0; i < verts.length; i += 1) {
+            const v1 = verts[i];
+            const v2 = verts[(i + 1) % verts.length];
+            const o1 = { x: v1.x + offset.x, y: v1.y + offset.y };
+            const o2 = { x: v2.x + offset.x, y: v2.y + offset.y };
+            ctx.fillStyle = sideCol;
+            ctx.beginPath();
+            ctx.moveTo(v1.x, v1.y);
+            ctx.lineTo(v2.x, v2.y);
+            ctx.lineTo(o2.x, o2.y);
+            ctx.lineTo(o1.x, o1.y);
+            ctx.closePath();
+            ctx.fill();
+          }
+
+          const lx = Math.cos(body.angle - 0.8);
+          const ly = Math.sin(body.angle - 0.8);
+          const g = ctx.createLinearGradient(
+            body.position.x - 44 * lx,
+            body.position.y - 44 * ly,
+            body.position.x + 44 * lx,
+            body.position.y + 44 * ly
+          );
+          g.addColorStop(0, this.shadeColor(topCol, 1.15));
+          g.addColorStop(1, this.shadeColor(topCol, 0.85));
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.moveTo(verts[0].x, verts[0].y);
+          for (let i = 1; i < verts.length; i += 1) ctx.lineTo(verts[i].x, verts[i].y);
+          ctx.closePath();
+          ctx.fill();
+
+          ctx.strokeStyle = lineCol;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(verts[0].x, verts[0].y);
+          for (let i = 1; i < verts.length; i += 1) ctx.lineTo(verts[i].x, verts[i].y);
+          ctx.closePath();
+          ctx.stroke();
+        }
+
+        pickStoneColor(body) {
+          const base = this.location.key === "mountain"
+            ? [120, 127, 134]
+            : this.location.key === "coast"
+              ? [116, 132, 142]
+              : [136, 128, 116];
+          const seed = body.plugin && body.plugin.colorSeed ? body.plugin.colorSeed : 1;
+          const r = this.clamp(Math.round(base[0] * seed), 70, 198);
+          const g = this.clamp(Math.round(base[1] * seed), 70, 198);
+          const b = this.clamp(Math.round(base[2] * seed), 70, 198);
+          return `rgb(${r},${g},${b})`;
+        }
+
+        drawHud() {
+          if (!this.location) return;
+          const ctx = this.ctx;
+          const pad = 14;
+
+          const gauge = this.getStableGauge();
+          const gaugeW = 190;
+          const gaugeH = 11;
+
+          ctx.font = "600 16px 'Segoe UI', 'Noto Sans JP', sans-serif";
+          ctx.fillStyle = "rgba(16,18,20,0.7)";
+          ctx.fillRect(pad, pad, 220, 58);
+          ctx.fillStyle = "#fff";
+          ctx.fillText(`${this.location.name}  ${this.location.envLabel}`, pad + 10, pad + 23);
+          ctx.fillStyle = "#d7dde3";
+          ctx.fillText(`ポイント: ${this.points}`, pad + 10, pad + 46);
+
+          ctx.fillStyle = "rgba(16,18,20,0.7)";
+          ctx.fillRect(this.width - 250, pad, 236, 84);
+          ctx.fillStyle = "#fff";
+          ctx.fillText(`段数: ${this.stackCount}`, this.width - 236, pad + 23);
+          ctx.fillStyle = "#d7dde3";
+          ctx.fillText(`安定 ${Math.round(gauge)}%`, this.width - 236, pad + 46);
+          ctx.fillStyle = "rgba(255,255,255,0.2)";
+          ctx.fillRect(this.width - 236, pad + 58, gaugeW, gaugeH);
+          ctx.fillStyle = gauge > 99 ? "#7ed37b" : "#f0b95f";
+          ctx.fillRect(this.width - 236, pad + 58, gaugeW * (gauge / 100), gaugeH);
+
+          ctx.fillStyle = "rgba(16,18,20,0.7)";
+          ctx.fillRect(this.width - 324, this.height - 94, 310, 80);
+          ctx.fillStyle = "#ecf0f2";
+          ctx.font = "500 14px 'Segoe UI', 'Noto Sans JP', sans-serif";
+          ctx.fillText("操作: ドラッグ / Q E or ホイール回転 / Space手放す", this.width - 312, this.height - 61);
+          ctx.fillText(`R リロール(${this.rerollsLeft}) / Esc 一時停止`, this.width - 312, this.height - 37);
+
+          if (this.isPaused) {
+            ctx.fillStyle = "rgba(0,0,0,0.44)";
+            ctx.fillRect(0, 0, this.width, this.height);
+            ctx.fillStyle = "#fff";
+            ctx.font = "700 34px 'Segoe UI', 'Noto Sans JP', sans-serif";
+            ctx.fillText("PAUSED", this.width * 0.5 - 74, this.height * 0.5);
+          }
+        }
+
+        renderOverlay() {
+          if (this.state === STATE.PLAY) {
+            this.ui.innerHTML = "";
+            return;
+          }
+
+          if (this.state === STATE.TITLE) {
+            this.ui.innerHTML = `
+              <div class="panel">
+                <h1>Sai v1</h1>
+                <p>石を運んで、そっと積んで、安定させる。2D物理 + 擬似3Dの石積み体験。</p>
+                <div class="row">
+                  <button class="primary" id="startBtn">開始</button>
+                </div>
+                <p class="tiny">保存済みポイント: ${this.points}</p>
+              </div>
+            `;
+            this.ui.querySelector("#startBtn").onclick = () => this.setState(STATE.MAP);
+            return;
+          }
+
+          if (this.state === STATE.MAP) {
+            this.ui.innerHTML = `
+              <div class="panel">
+                <h2>ロケーション選択</h2>
+                <p>場所で石の癖と外力が変わります。</p>
+                <div class="row">
+                  ${Object.values(LOCATION_CONFIG).map((loc) => `
+                    <div class="card">
+                      <h3>${loc.name}</h3>
+                      <div class="tiny">${loc.envLabel}</div>
+                      <div class="stats">
+                        <div>平面度: ${Math.round(loc.stoneFlatness * 100)}</div>
+                        <div>摩擦: ${loc.stoneFriction.toFixed(2)}</div>
+                        <div>密度: ${loc.stoneDensity.toFixed(4)}</div>
+                        <div>倍率: x${loc.multiplier.toFixed(1)}</div>
+                        <div>BEST: ${this.bestByLocation[loc.key] || 0}</div>
+                      </div>
+                      <div class="row" style="margin-top:10px;">
+                        <button data-loc="${loc.key}" class="primary">ここで遊ぶ</button>
+                      </div>
+                    </div>
+                  `).join("")}
+                </div>
+              </div>
+            `;
+            this.ui.querySelectorAll("button[data-loc]").forEach((btn) => {
+              btn.onclick = () => this.startRun(btn.dataset.loc);
+            });
+            return;
+          }
+
+          if (this.state === STATE.RESULT) {
+            const best = this.location ? (this.bestByLocation[this.location.key] || 0) : 0;
+            this.ui.innerHTML = `
+              <div class="panel">
+                <h2>RESULT</h2>
+                <p>${this.location ? this.location.name : "-"} の結果</p>
+                <div class="stats">
+                  <div>段数: ${this.stackCount}</div>
+                  <div>安定ボーナス: ${this.stabilityBonus}</div>
+                  <div>スコア: ${this.lastRunScore}</div>
+                  <div>獲得ポイント: +${this.lastRunPoints}</div>
+                  <div>この場所のBEST: ${best}</div>
+                  <div>所持ポイント: ${this.points}</div>
+                </div>
+                <div class="row" style="margin-top: 14px;">
+                  <button class="primary" id="toMapBtn">MAPへ戻る</button>
+                  <button id="retryBtn">同じ場所で再挑戦</button>
+                </div>
+              </div>
+            `;
+            this.ui.querySelector("#toMapBtn").onclick = () => this.setState(STATE.MAP);
+            this.ui.querySelector("#retryBtn").onclick = () => this.startRun(this.location.key);
+          }
+        }
+
+        loop(timestamp) {
+          if (this.resizeQueued) {
+            this.resize();
+            this.resizeQueued = false;
+          }
+
+          if (!this.lastTimestamp) this.lastTimestamp = timestamp;
+          const frameMs = Math.min(60, timestamp - this.lastTimestamp);
+          this.lastTimestamp = timestamp;
+          this.accumulator += frameMs;
+
+          while (this.accumulator >= TUNING.fixedDeltaMs) {
+            this.update(TUNING.fixedDeltaMs / 1000);
+            this.accumulator -= TUNING.fixedDeltaMs;
+          }
+
+          this.draw();
+          requestAnimationFrame((t) => this.loop(t));
+        }
+
+        getPointerPosition(e) {
+          const rect = this.canvas.getBoundingClientRect();
+          return {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top
+          };
+        }
+
+        generateStoneVertices(sides, radius, flatness) {
+          const verts = [];
+          const yScale = 1 - flatness * 0.22;
+          for (let i = 0; i < sides; i += 1) {
+            const a = (Math.PI * 2 * i) / sides + this.randRange(-0.2, 0.2);
+            const stretch = 1 + flatness * Math.cos(a) * 0.23;
+            const r = radius * stretch * this.randRange(0.76, 1.12);
+            const x = Math.cos(a) * r;
+            const y = Math.sin(a) * r * yScale;
+            verts.push({ x, y });
+          }
+          return Vertices.clockwiseSort(verts);
+        }
+
+        shadeColor(rgb, factor) {
+          const m = rgb.match(/\d+/g);
+          const r = this.clamp(Math.round(Number(m[0]) * factor), 0, 255);
+          const g = this.clamp(Math.round(Number(m[1]) * factor), 0, 255);
+          const b = this.clamp(Math.round(Number(m[2]) * factor), 0, 255);
+          return `rgb(${r},${g},${b})`;
+        }
+
+        randRange(min, max) {
+          return Math.random() * (max - min) + min;
+        }
+
+        randInt(min, max) {
+          return Math.floor(this.randRange(min, max + 1));
+        }
+
+        clamp(v, min, max) {
+          return Math.max(min, Math.min(max, v));
+        }
+      }
+
+      new SaiGame();
+    })();
+  </script>
+</body>
+</html>
