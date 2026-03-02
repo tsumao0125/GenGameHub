@@ -1,65 +1,798 @@
-﻿<!doctype html><html lang="ja"><head>
-<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Sai v1 3D</title>
-<style>
-html,body{margin:0;height:100%;overflow:hidden;background:#101319;color:#eef;font-family:"Segoe UI","Noto Sans JP",sans-serif}
-#c{width:100%;height:100%;display:block}#ui,#ov{position:fixed;inset:0}#ui{pointer-events:none;opacity:0;transition:.2s}#ui.on{opacity:1}
-.b{position:absolute;background:rgba(10,14,20,.78);border:1px solid #ffffff2b;border-radius:10px;padding:8px 10px;backdrop-filter:blur(5px)}
-#loc{left:10px;top:10px}#stk{right:10px;top:10px;text-align:right}#g{left:50%;top:10px;transform:translateX(-50%);min-width:min(460px,92vw)}#gu{right:10px;top:92px;pointer-events:auto}
-#bar{height:10px;background:#ffffff26;border-radius:999px;overflow:hidden}#fill{height:100%;width:0;background:#f0b95f}
-#help{right:10px;bottom:10px;font-size:12px;color:#c8d0d8}.k{font-size:11px;color:#bcc6d2}.v{font-weight:700}
-#ov{display:grid;place-items:center;padding:14px;pointer-events:none}.p{pointer-events:auto;max-width:min(760px,96vw);background:rgba(8,11,16,.9);border:1px solid #ffffff2b;border-radius:14px;padding:14px}
-.row{display:flex;flex-wrap:wrap;gap:8px}.card{flex:1 1 210px;min-width:210px;border:1px solid #ffffff24;border-radius:10px;padding:10px;background:#ffffff0a}
-button{border:1px solid #ffffff40;background:#ffffff14;color:#fff;border-radius:8px;padding:8px 12px;cursor:pointer}button.pr{background:#f0b95f;color:#1f1708;border-color:#00000033}
-.small{font-size:12px;color:#c8d0d8}
-</style></head><body>
-<canvas id="c"></canvas>
-<div id="ui"><div id="loc" class="b"><div class="k">LOCATION</div><div id="ln" class="v">-</div><div id="le" class="small">-</div></div>
-<div id="stk" class="b"><div class="k">STACK</div><div id="sc" class="v">0</div><div id="pt" class="small">ポイント: 0</div></div>
-<div id="gu" class="b"><button id="giveup" type="button">GiveUp</button></div>
-<div id="g" class="b"><div id="gl" class="small">安定ゲージ 0%</div><div id="bar"><div id="fill"></div></div></div>
-<div id="help" class="b">アクティブ石: 左ドラッグ移動 / 右ドラッグ回転<br/>非アクティブ石: 左ドラッグパン / 右ドラッグ旋回 / Space:そっと置く</div></div>
-<div id="ov"></div>
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
-<script type="module">
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import {OrbitControls} from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js";
-import RAPIER from "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.12.0/rapier.es.js";
-const S={T:"TITLE",M:"MAP",P:"PLAY",R:"RESULT"};
-const T={g:-9.81,fx:1/60,sv:.12,sw:.08,st:1,rv:.2,ra:.3,maxR:3,spawn:.75,half:1.1,top:1.3,ground:0,groundHalf:.08,placeGap:.002,fail:-.6};
-const L={river:{key:"river",name:"河原",env:"風: 弱",sky:[0xd8d0bf,0x9f9b8f],gr:0xb9b19d,fr:.78,de:1,m:1,wn:[2,4],wf:1.7,g:.08,w:0}};
-const KEY="sai_v1_3d_data";
-class G{constructor(){this.cv=document.getElementById("c");this.ov=document.getElementById("ov");this.ui=document.getElementById("ui");this.e={ln:document.getElementById("ln"),le:document.getElementById("le"),sc:document.getElementById("sc"),pt:document.getElementById("pt"),gl:document.getElementById("gl"),fill:document.getElementById("fill"),help:document.getElementById("help")};this.state=S.T;this.loc=null;this.points=0;this.best={river:0,mountain:0,coast:0};this.lastScore=0;this.lastPts=0;this.stack=0;this.bonus=0;this.reroll=T.maxR;this.clock=new THREE.Clock();this.acc=0;this.world=null;this.stones=[];this.cur=null;this.rel=false;this.stab=0;this.drag=false;this.rotDrag=false;this.dragY=0;this.mx=0;this.my=0;this.ptr=new THREE.Vector2();this.rc=new THREE.Raycaster();this.dp=new THREE.Plane();this.hit=new THREE.Vector3();this.off=new THREE.Vector3();this.ld=new THREE.Vector3();this.dv=new THREE.Vector3();this.lt=0;this.nextWind=0;this.pause=false;this.wm=[];this.gm=null;this.load();}
-async init(){await RAPIER.init();this.R=RAPIER;this.r=new THREE.WebGLRenderer({canvas:this.cv,antialias:true});this.r.setPixelRatio(Math.min(devicePixelRatio||1,2));this.r.setSize(innerWidth,innerHeight);this.r.outputColorSpace=THREE.SRGBColorSpace;this.s=new THREE.Scene();this.cam=new THREE.PerspectiveCamera(52,innerWidth/innerHeight,.1,200);this.cam.position.set(1.6,1.25,1.6);this.ctrl=new OrbitControls(this.cam,this.cv);Object.assign(this.ctrl,{enableDamping:true,enablePan:true,minDistance:.5,maxDistance:5,maxPolarAngle:Math.PI*.48});this.ctrl.target.set(0,.22,0);this.ctrl.mouseButtons.LEFT=THREE.MOUSE.PAN;this.ctrl.mouseButtons.RIGHT=THREE.MOUSE.ROTATE;this.s.add(new THREE.HemisphereLight(0xffffff,0x2c3440,.8));let d=new THREE.DirectionalLight(0xfff7dd,1.25);d.position.set(8,15,6);this.s.add(d);d=new THREE.DirectionalLight(0xa4b8d8,.45);d.position.set(-7,9,-5);this.s.add(d);addEventListener("resize",()=>{this.cam.aspect=innerWidth/innerHeight;this.cam.updateProjectionMatrix();this.r.setSize(innerWidth,innerHeight)});this.cv.addEventListener("pointerdown",e=>this.pd(e),{capture:true});this.cv.addEventListener("pointermove",e=>this.pm(e),{capture:true});this.cv.addEventListener("pointerup",()=>this.pu(),{capture:true});this.cv.addEventListener("pointercancel",()=>this.pu(),{capture:true});this.cv.addEventListener("contextmenu",e=>e.preventDefault());this.cv.addEventListener("wheel",e=>this.wh(e),{passive:false});addEventListener("keydown",e=>this.kd(e));const gb=document.getElementById("giveup");if(gb)gb.onclick=()=>this.giveUp();this.overlay();this.animate();}
-load(){try{let d=JSON.parse(localStorage.getItem(KEY)||"null");if(!d)return;this.points=Number.isFinite(d.points)?d.points:0;this.best=Object.assign(this.best,d.best||{});}catch{this.points=0}}
-save(){localStorage.setItem(KEY,JSON.stringify({points:this.points,best:this.best}))}
-set(st){this.state=st;this.ui.classList.toggle("on",st===S.P);this.overlay();}
-clearWorld(){if(!this.world)return;for(const o of this.stones){if(o.col.isValid())this.world.removeCollider(o.col,true);this.world.removeRigidBody(o.rb);this.s.remove(o.m);o.m.geometry.dispose();o.m.material.dispose()}this.stones=[];this.cur=null;}
-clearEnv(){if(this.gm){this.s.remove(this.gm);this.gm.geometry.dispose();this.gm.material.dispose();this.gm=null;}for(const m of this.wm){this.s.remove(m);m.geometry.dispose();m.material.dispose()}this.wm=[];}
-start(k){this.loc=L[k];this.stack=0;this.bonus=0;this.reroll=T.maxR;this.lastScore=0;this.lastPts=0;this.stab=0;this.rel=false;this.drag=false;this.pause=false;this.nextWind=0;this.clearWorld();this.world=new this.R.World({x:0,y:T.g,z:0});this.clearEnv();this.createGround();this.spawn();this.hud(0);this.set(S.P);}
-createGround(){this.world.createCollider(this.R.ColliderDesc.cuboid(2.4,T.groundHalf,2.4).setFriction(1).setRestitution(.02),this.world.createRigidBody(this.R.RigidBodyDesc.fixed().setTranslation(0,T.ground-T.groundHalf,0)));const h=1.4,t=.08,a=T.half+t,mw=(x,z,sx,sz)=>{let rb=this.world.createRigidBody(this.R.RigidBodyDesc.fixed().setTranslation(x,h/2-.5,z));this.world.createCollider(this.R.ColliderDesc.cuboid(sx,h/2,sz).setFriction(.8).setRestitution(.02),rb)};mw(-a,0,t,a+t);mw(a,0,t,a+t);mw(0,-a,a+t,t);mw(0,a,a+t,t);this.s.background=new THREE.Color(this.loc.sky[0]);this.s.fog=new THREE.Fog(this.loc.sky[1],18,42);this.gm=new THREE.Mesh(new THREE.BoxGeometry(4.8,.16,4.8),new THREE.MeshStandardMaterial({color:0x5f666f,roughness:.98,metalness:0}));this.gm.position.set(0,T.ground-T.groundHalf,0);this.s.add(this.gm);let mat=new THREE.MeshStandardMaterial({color:0x5d6572,roughness:.94,metalness:.02,transparent:true,opacity:.18});[{p:[-a,h/2-.5,0],s:[1,h,a*2+1]},{p:[a,h/2-.5,0],s:[1,h,a*2+1]},{p:[0,h/2-.5,-a],s:[a*2+1,h,1]},{p:[0,h/2-.5,a],s:[a*2+1,h,1]}].forEach(v=>{let m=new THREE.Mesh(new THREE.BoxGeometry(...v.s),mat.clone());m.position.set(...v.p);this.s.add(m);this.wm.push(m);});}
-spawn(){let g=new THREE.DodecahedronGeometry(this.rr(.055,.1),0);g.scale(this.rr(.68,1.55),this.rr(.6,1.4),this.rr(.68,1.55));g.computeVertexNormals();let b=this.loc.key==="mountain"?new THREE.Color(0x90979f):this.loc.key==="coast"?new THREE.Color(0x8498a8):new THREE.Color(0x988c7e);b.multiplyScalar(this.rr(.86,1.17));let m=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:b,roughness:.88,metalness:.02}));let ol=new THREE.LineSegments(new THREE.EdgesGeometry(g),new THREE.LineBasicMaterial({color:0xffd45a}));ol.visible=true;m.add(ol);g.computeBoundingBox();let bb=g.boundingBox;let hx=Math.max(.012,(bb.max.x-bb.min.x)*.5*.92),hy=Math.max(.012,(bb.max.y-bb.min.y)*.5*.92),hz=Math.max(.012,(bb.max.z-bb.min.z)*.5*.92);let rb=this.world.createRigidBody(this.R.RigidBodyDesc.kinematicPositionBased().setTranslation(0,T.spawn,0).setCanSleep(false));let cd=this.R.ColliderDesc.convexHull(g.attributes.position.array);if(!cd)cd=this.R.ColliderDesc.cuboid(hx*.82,hy*.82,hz*.82);cd.setFriction(Math.min(3,this.loc.fr*2.1)).setRestitution(.001).setDensity(this.loc.de*3.2);if(cd.setContactSkin)cd.setContactSkin(0);let col=this.world.createCollider(cd,rb);m.position.set(0,T.spawn,0);this.s.add(m);let o={m,rb,col,h:new THREE.Vector3(hx,hy,hz),r:false,ol};this.cur=o;this.stones.push(o);this.rel=false;this.stab=0;}
-rerollStone(){if(!this.cur||this.rel||this.reroll<=0)return;const p=this.cur.rb.translation(),q=this.cur.rb.rotation();this.world.removeCollider(this.cur.col,true);this.world.removeRigidBody(this.cur.rb);this.s.remove(this.cur.m);this.cur.m.geometry.dispose();this.cur.m.material.dispose();this.stones=this.stones.filter(x=>x!==this.cur);this.reroll--;this.spawn();this.cur.rb.setNextKinematicTranslation(p);this.cur.rb.setNextKinematicRotation(q);this.cur.m.position.set(p.x,p.y,p.z);this.cur.m.quaternion.set(q.x,q.y,q.z,q.w);}
-release(){if(!this.cur||this.rel)return;this.drag=false;this.rotDrag=false;this.ctrl.enabled=true;const sp=Math.hypot(this.dv.x,this.dv.y,this.dv.z),fast=sp>0.9;let vx=this.dv.x*0.0012,vy=Math.min(this.dv.y*0.0012,0)-0.012,vz=this.dv.z*0.0012;if(fast){vx*=0.12;vz*=0.12;vy=Math.min(vy,-0.24);}const p=this.cur.rb.translation();const minY=this.cur.h.y+T.placeGap;if(p.y<minY)this.cur.rb.setNextKinematicTranslation({x:p.x,y:minY,z:p.z});if(this.cur.ol)this.cur.ol.visible=false;this.cur.rb.setBodyType(this.R.RigidBodyType.Dynamic,true);if(this.cur.rb.setCcdEnabled)this.cur.rb.setCcdEnabled(true);this.cur.rb.setLinearDamping(5.2);this.cur.rb.setAngularDamping(6.2);this.cur.rb.setLinvel({x:vx,y:vy,z:vz},true);this.cur.rb.setAngvel({x:0,y:0,z:0},true);this.cur.r=true;this.rel=true;this.stab=0;}
-updPtr(e){const r=this.cv.getBoundingClientRect();this.ptr.x=((e.clientX-r.left)/r.width)*2-1;this.ptr.y=-((e.clientY-r.top)/r.height)*2+1}
-pd(e){if(this.state!==S.P||this.pause||!this.cur||this.rel)return;this.updPtr(e);this.rc.setFromCamera(this.ptr,this.cam);const h=this.rc.intersectObject(this.cur.m,false)[0];if(!h)return;if(e.button===0){this.drag=true;this.ctrl.enabled=false;const sp=this.cur.m.position,n=new THREE.Vector3();this.cam.getWorldDirection(n).normalize();this.dp.setFromNormalAndCoplanarPoint(n,sp);if(this.rc.ray.intersectPlane(this.dp,this.hit)){this.off.copy(this.hit).sub(sp);}else{this.off.set(0,0,0);}this.ld.copy(sp);this.dv.set(0,0,0);this.lt=performance.now();this.cv.setPointerCapture(e.pointerId);return;}if(e.button===2){this.rotDrag=true;this.ctrl.enabled=false;this.mx=e.clientX;this.my=e.clientY;this.cv.setPointerCapture(e.pointerId);e.preventDefault();}}
-pm(e){this.updPtr(e);if(!this.cur||this.rel||this.pause)return;if(this.rotDrag){const dx=e.clientX-this.mx,dy=e.clientY-this.my;this.mx=e.clientX;this.my=e.clientY;const q=this.cur.rb.rotation(),c=new THREE.Quaternion(q.x,q.y,q.z,q.w),yaw=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),dx*.01),right=new THREE.Vector3(1,0,0).applyQuaternion(this.cam.quaternion).normalize(),pitch=new THREE.Quaternion().setFromAxisAngle(right,dy*.01);c.premultiply(yaw).premultiply(pitch).normalize();this.cur.rb.setNextKinematicRotation(c);this.cur.m.quaternion.copy(c);return;}if(!this.drag)return;this.rc.setFromCamera(this.ptr,this.cam);if(!this.rc.ray.intersectPlane(this.dp,this.hit))return;const t=this.hit.clone().sub(this.off);t.x=this.clamp(t.x,-T.half+.7,T.half-.7);t.z=this.clamp(t.z,-T.half+.7,T.half-.7);const minY=this.cur.h.y+T.placeGap;t.y=this.clamp(t.y,minY,T.top);if(!this.canMoveActiveTo(t))return;const now=performance.now(),dt=Math.max(.001,(now-this.lt)/1000);this.dv.copy(t).sub(this.ld).divideScalar(dt);this.ld.copy(t);this.lt=now;const q=this.cur.rb.rotation();this.cur.rb.setNextKinematicTranslation(t);this.cur.rb.setNextKinematicRotation(q);this.cur.m.position.copy(t);} pu(){if(!this.drag&&!this.rotDrag)return;this.drag=false;this.rotDrag=false;this.ctrl.enabled=true;}
-wh(e){if(this.state!==S.P||this.pause)return;}
-kd(e){if(this.state!==S.P)return;const c=e.code||"",k=(e.key||"").toLowerCase();if(c==="Space"||k===" "||k==="spacebar"){e.preventDefault();this.release()}else if(c==="KeyR"||k==="r")this.rerollStone();else if(c==="Digit1"||k==="1")this.camPreset(1);else if(c==="Digit2"||k==="2")this.camPreset(2);else if(c==="Escape"||k==="escape")this.pause=!this.pause;}
-rot(y){if(!this.cur)return;const q=this.cur.rb.rotation(),c=new THREE.Quaternion(q.x,q.y,q.z,q.w),a=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),y);c.multiply(a).normalize();this.cur.rb.setNextKinematicRotation(c);this.cur.m.quaternion.copy(c)}camPreset(n){if(!this.cur)return;const tp=this.cur.rb.translation();if(n===1)this.cam.position.set(tp.x,tp.y+.95,tp.z+.001);else this.cam.position.set(tp.x,tp.y+.22,tp.z+1.2);this.ctrl.target.set(tp.x,tp.y,tp.z);this.ctrl.update()}
-canMoveActiveTo(t){if(!this.cur)return false;const h1=this.cur.h;for(const s of this.stones){if(s===this.cur||!s.r)continue;const p=s.rb.translation(),h2=s.h;const dx=Math.abs(t.x-p.x),dy=Math.abs(t.y-p.y),dz=Math.abs(t.z-p.z);if(dx<(h1.x+h2.x-0.004)&&dy<(h1.y+h2.y-0.004)&&dz<(h1.z+h2.z-0.004))return false;}return true;}forces(){return;}
-updatePhysics(dt){if(!this.world||this.state!==S.P||this.pause)return;this.forces();this.acc+=dt;while(this.acc>=T.fx){this.world.step();this.acc-=T.fx}for(const s of this.stones){if(s.r){const lv=s.rb.linvel(),av=s.rb.angvel();const hv=Math.hypot(lv.x,lv.z);if(hv>.55){const k=.55/hv;s.rb.setLinvel({x:lv.x*k,y:lv.y,z:lv.z*k},true)}else{s.rb.setLinvel({x:lv.x*.965,y:lv.y*.995,z:lv.z*.965},true)}const yv=s.rb.linvel().y;if(yv<-2.3)s.rb.setLinvel({x:s.rb.linvel().x,y:-2.3,z:s.rb.linvel().z},true);s.rb.setAngvel({x:av.x*.68,y:av.y*.68,z:av.z*.68},true);}const pg=s.rb.translation(),gmin=s.h.y+T.placeGap;if(pg.y<gmin){s.rb.setTranslation({x:pg.x,y:gmin,z:pg.z},true);const lvg=s.rb.linvel();s.rb.setLinvel({x:lvg.x*0.45,y:Math.max(0,lvg.y),z:lvg.z*0.45},true);}const p=s.rb.translation(),q=s.rb.rotation();s.m.position.set(p.x,p.y,p.z);s.m.quaternion.set(q.x,q.y,q.z,q.w)}}
-giveUp(){if(this.state!==S.P||this.pause)return;this.finish();}
-checkStability(dt){if(!this.cur||!this.rel||this.state!==S.P||this.pause)return;const lv=this.cur.rb.linvel(),av=this.cur.rb.angvel(),sp=Math.hypot(lv.x,lv.y,lv.z),sw=Math.hypot(av.x,av.y,av.z),p=this.cur.rb.translation(),ray=new this.R.Ray({x:p.x,y:p.y,z:p.z},{x:0,y:-1,z:0}),touch=!!this.world.castRay(ray,this.cur.h.y+.2,true);if(touch&&sp<T.sv&&sw<T.sw)this.stab+=dt;else this.stab=Math.max(0,this.stab-dt*.35);if(this.stab>=T.st){this.stack++;this.bonus+=Math.max(0,Math.floor((T.st+.8-this.stab)*60));this.cur=null;this.rel=false;this.stab=0;this.spawn();}}
-fail(){if(this.state!==S.P||this.pause)return;for(let i=0;i<this.stones.length;i++){const s=this.stones[i];const p=s.rb.translation();if(p.y<T.fail){this.finish();return;}if(s.r&&i>0){const bottom=p.y-s.h.y;if(bottom<=T.ground+0.005){this.finish();return;}}}}
-finish(){if(this.state!==S.P)return;const score=Math.floor(this.stack*100*(this.loc?this.loc.m:1)+this.bonus),earn=Math.max(0,Math.floor(score/100));this.lastScore=score;this.lastPts=earn;this.points+=earn;this.best[this.loc.key]=Math.max(this.best[this.loc.key]||0,this.stack);this.save();this.set(S.R)}
-gauge(){if(!this.cur||!this.rel)return 0;const lv=this.cur.rb.linvel(),av=this.cur.rb.angvel(),sp=Math.hypot(lv.x,lv.y,lv.z),sw=Math.hypot(av.x,av.y,av.z),p=this.cur.rb.translation(),ray=new this.R.Ray({x:p.x,y:p.y,z:p.z},{x:0,y:-1,z:0}),c=this.world.castRay(ray,this.cur.h.y+.2,true)?1:.15,sr=1-this.clamp(sp/T.sv,0,1),wr=1-this.clamp(sw/T.sw,0,1),tr=this.clamp(this.stab/T.st,0,1);return this.clamp((sr*.35+wr*.35+tr*.2+c*.1)*100,0,100)}
-hud(g){if(!this.loc)return;let h=0;for(const s of this.stones){if(!s.r)continue;const p=s.rb.translation();h=Math.max(h,p.y+s.h.y);}const hcm=Math.max(0,Math.round(h*100));this.e.ln.textContent=this.loc.name;this.e.le.textContent=this.loc.env;this.e.sc.textContent=`${this.stack}段 / ${hcm}cm`;this.e.pt.textContent=`ポイント: ${this.points}`;this.e.gl.textContent=`安定ゲージ ${Math.round(g)}%`;this.e.fill.style.width=`${g.toFixed(1)}%`;this.e.fill.style.background=g>=99?"#7dd486":"#f0b95f";this.e.help.textContent=`アクティブ石: 左=移動 右=回転 / 非アクティブ: 左=パン 右=旋回 / ホイール=ズーム | R:リロール(${this.reroll}) / Space:そっと置く`;}
-overlay(){if(this.state===S.P){this.ov.innerHTML="";return}if(this.state===S.T){this.ov.innerHTML=`<div class="p"><h1>Sai v1 3D</h1><p class="small">Three.js + Rapier の3D石積み。河原ステージのみ。アクティブ石は左ドラッグ移動・右ドラッグ回転、Spaceでそっと置く。</p><div class="row"><button id="st" class="pr">開始</button></div><p class="small">保存済みポイント: ${this.points}</p></div>`;this.ov.querySelector("#st").onclick=()=>this.set(S.M);return}if(this.state===S.M){this.ov.innerHTML=`<div class="p"><h2>ロケーション選択</h2><div class="row">${Object.values(L).map(v=>`<div class="card"><h3>${v.name}</h3><div class="small">${v.env}</div><div class="small">摩擦:${v.fr.toFixed(2)} 密度:${v.de.toFixed(2)} 倍率:x${v.m.toFixed(2)}<br/>BEST:${this.best[v.key]||0}</div><div class="row" style="margin-top:8px"><button class="pr" data-k="${v.key}">ここで遊ぶ</button></div></div>`).join("")}</div></div>`;this.ov.querySelectorAll("button[data-k]").forEach(b=>b.onclick=()=>this.start(b.dataset.k));return}if(this.state===S.R){const best=this.loc?(this.best[this.loc.key]||0):0;this.ov.innerHTML=`<div class="p"><h2>RESULT</h2><p class="small">${this.loc?this.loc.name:"-"} の結果</p><div class="small">段数:${this.stack}<br/>安定ボーナス:${this.bonus}<br/>スコア:${this.lastScore}<br/>獲得ポイント:+${this.lastPts}<br/>この場所のBEST:${best}<br/>所持ポイント:${this.points}</div><div class="row" style="margin-top:10px"><button id="mp" class="pr">MAPへ戻る</button><button id="rt">同じ場所で再挑戦</button></div></div>`;this.ov.querySelector("#mp").onclick=()=>this.set(S.M);this.ov.querySelector("#rt").onclick=()=>this.start(this.loc.key);}}
-handleInput(){this.ctrl.update()}render(){this.r.render(this.s,this.cam)}animate(){requestAnimationFrame(()=>this.animate());const dt=Math.min(.05,this.clock.getDelta());this.handleInput();this.updatePhysics(dt);this.checkStability(dt);this.fail();if(this.state===S.P)this.hud(this.gauge());this.render()}
-rr(a,b){return Math.random()*(b-a)+a}clamp(v,a,b){return Math.max(a,Math.min(b,v))}}
-new G().init();
-</script></body></html>
+﻿<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sai v1</title>
+  <style>
+    :root {
+      --hud-bg: rgba(0, 0, 0, 0.58);
+      --hud-fg: #f1f4f6;
+      --accent: #9bd0ff;
+    }
 
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: "Segoe UI", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+      background: #8ea6b6;
+      color: var(--hud-fg);
+    }
 
+    #app {
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
 
+    #hudTopLeft {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 10;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: var(--hud-bg);
+      backdrop-filter: blur(2px);
+      font-size: 13px;
+      line-height: 1.4;
+      user-select: none;
+    }
+
+    #giveUpBtn {
+      margin-top: 8px;
+      width: 100%;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.12);
+      color: var(--hud-fg);
+      font-size: 12px;
+      padding: 6px 8px;
+      cursor: pointer;
+    }
+
+    #giveUpBtn:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    #hudBottomRight {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      z-index: 10;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: var(--hud-bg);
+      backdrop-filter: blur(2px);
+      font-size: 13px;
+      line-height: 1.5;
+      user-select: none;
+      white-space: pre-line;
+    }
+
+    .label {
+      color: var(--accent);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="hudTopLeft">
+      <span class="label">stackCount</span>: <span id="stackCount">0</span>
+      <button id="giveUpBtn" type="button">Give Up</button>
+    </div>
+    <div id="hudBottomRight">L-drag (empty): pan camera
+R-drag (empty): orbit camera
+L-drag (active stone): move stone (free on camera plane)
+R-drag (active stone): rotate stone
+Space: drop
+1: top view (center active stone)
+2: side view (center active stone)</div>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    let THREE;
+    let OrbitControls;
+    let RAPIER;
+
+    const TUNING = {
+      fixedDt: 1 / 60,
+      gravity: -9.81,
+      stoneFriction: 3.0,
+      stoneRestitution: 0.0,
+      stoneDensity: 20.0,
+      groundFriction: 2.0,
+      groundRestitution: 0.01,
+      spawnY: 2.3,
+      spawnRange: 1.8,
+      minStoneSize: 0.5,
+      maxStoneSize: 1.2,
+      maxAspectRatio: 2.4,
+      dragRotateSpeed: 0.012,
+      gentleDurationMin: 0.9,
+      gentleDurationMax: 1.4,
+      gentleGravityScale: 0.06,
+      gentleMaxDownSpeed: 0.75,
+      topPolar: 0.01,
+      sidePolar: Math.PI / 2,
+      viewTweenSeconds: 0.32,
+      viewEasing: (t) => 1 - Math.pow(1 - t, 3),
+    };
+
+    const ENV = {
+      wind: 0,
+      wave: 0,
+    };
+
+    const app = document.getElementById("app");
+    const stackCountEl = document.getElementById("stackCount");
+    const giveUpBtn = document.getElementById("giveUpBtn");
+
+    let scene;
+    let camera;
+    let renderer;
+    let controls;
+    let world;
+
+    let groundMesh;
+    let groundBody;
+
+    let activeStone = null;
+    let stackCount = 0;
+
+    let raycaster;
+    let pointerNdc;
+    let dragPlane;
+    let dragHit;
+    let dragOffset;
+
+    let isGrabbing = false;
+    let pointerIsDown = false;
+    let grabMode = "none"; // none | move | rotate
+    let lastPointerX = 0;
+    let lastPointerY = 0;
+    let activePointerId = null;
+
+    const dynamicStones = [];
+    const stones = [];
+
+    let viewTween = null;
+
+    function rand(min, max) {
+      return min + Math.random() * (max - min);
+    }
+
+    function clamp(v, lo, hi) {
+      return Math.max(lo, Math.min(hi, v));
+    }
+
+    function createRockTexture() {
+      const size = 128;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      const base = 95;
+      const variance = 35;
+      const imageData = ctx.createImageData(size, size);
+      for (let i = 0; i < imageData.data.length; i += 4) {
+        const n = base + Math.floor((Math.random() - 0.5) * variance);
+        imageData.data[i] = n;
+        imageData.data[i + 1] = n + 8;
+        imageData.data[i + 2] = n + 14;
+        imageData.data[i + 3] = 255;
+      }
+      ctx.putImageData(imageData, 0, 0);
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(14, 14);
+      tex.anisotropy = 8;
+      return tex;
+    }
+
+    function initThree() {
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x9ab2c2);
+      scene.fog = new THREE.Fog(0x9ab2c2, 25, 70);
+
+      camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 250);
+      camera.position.set(9, 8, 11);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      app.appendChild(renderer.domElement);
+
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(0, 1.0, 0);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.08;
+      controls.minDistance = 4;
+      controls.maxDistance = 38;
+      controls.maxPolarAngle = Math.PI * 0.495;
+      controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
+      controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
+      controls.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
+      controls.update();
+
+      raycaster = new THREE.Raycaster();
+      pointerNdc = new THREE.Vector2();
+      dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+      dragHit = new THREE.Vector3();
+      dragOffset = new THREE.Vector3();
+
+      const hemi = new THREE.HemisphereLight(0xdfefff, 0x6d7c86, 0.7);
+      scene.add(hemi);
+
+      const sun = new THREE.DirectionalLight(0xffffff, 1.15);
+      sun.position.set(8, 16, 6);
+      sun.castShadow = true;
+      sun.shadow.mapSize.set(2048, 2048);
+      sun.shadow.camera.near = 1;
+      sun.shadow.camera.far = 45;
+      sun.shadow.camera.left = -14;
+      sun.shadow.camera.right = 14;
+      sun.shadow.camera.top = 14;
+      sun.shadow.camera.bottom = -14;
+      scene.add(sun);
+
+      window.addEventListener("resize", onResize);
+      renderer.domElement.addEventListener("pointerdown", onPointerDown);
+      renderer.domElement.addEventListener("contextmenu", (e) => e.preventDefault());
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", onPointerUp);
+      window.addEventListener("pointercancel", onPointerUp);
+      window.addEventListener("keydown", onKeyDown);
+      giveUpBtn.addEventListener("click", onGiveUp);
+    }
+
+    async function initRapier() {
+      await RAPIER.init();
+      world = new RAPIER.World({ x: 0, y: TUNING.gravity, z: 0 });
+    }
+
+    async function loadDependencies() {
+      const threeMod = await import("three");
+      const controlsMod = await import("three/addons/controls/OrbitControls.js");
+      const rapierCandidates = [
+        "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.12.0/rapier.es.js",
+        "https://unpkg.com/@dimforge/rapier3d-compat@0.12.0/rapier.es.js",
+        "https://esm.sh/@dimforge/rapier3d-compat@0.12.0?bundle",
+      ];
+      let rapierMod = null;
+      let rapierErr = null;
+      for (let i = 0; i < rapierCandidates.length; i += 1) {
+        const url = rapierCandidates[i];
+        try {
+          rapierMod = await import(url);
+          rapierErr = null;
+          break;
+        } catch (err) {
+          rapierErr = new Error(`Rapier import failed: ${url} :: ${err && err.message ? err.message : err}`);
+        }
+      }
+      if (!rapierMod) {
+        throw rapierErr || new Error("Rapier import failed on all CDNs.");
+      }
+      THREE = threeMod;
+      OrbitControls = controlsMod.OrbitControls;
+      RAPIER = rapierMod.default ?? rapierMod;
+    }
+
+    function showFatal(message) {
+      const hud = document.getElementById("hudBottomRight");
+      hud.textContent = `Init failed:\n${message}\n\nCheck network/CDN access.`; 
+      hud.style.color = "#ffd7d7";
+    }
+
+    function createGround() {
+      const groundSize = 80;
+
+      const groundGeo = new THREE.PlaneGeometry(groundSize, groundSize, 1, 1);
+      const groundMat = new THREE.MeshStandardMaterial({
+        color: 0x798c98,
+        roughness: 0.95,
+        metalness: 0.02,
+        map: createRockTexture(),
+      });
+      groundMesh = new THREE.Mesh(groundGeo, groundMat);
+      groundMesh.rotation.x = -Math.PI / 2;
+      groundMesh.receiveShadow = true;
+      scene.add(groundMesh);
+
+      const rbDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(0, 0, 0);
+      groundBody = world.createRigidBody(rbDesc);
+
+      const colDesc = RAPIER.ColliderDesc.cuboid(groundSize / 2, 0.1, groundSize / 2)
+        .setFriction(TUNING.groundFriction)
+        .setRestitution(TUNING.groundRestitution);
+      world.createCollider(colDesc, groundBody);
+    }
+
+    function randomStoneSize() {
+      let w = rand(TUNING.minStoneSize, TUNING.maxStoneSize);
+      let h = rand(TUNING.minStoneSize * 0.75, TUNING.maxStoneSize * 0.9);
+      let d = rand(TUNING.minStoneSize, TUNING.maxStoneSize);
+
+      const maxDim = Math.max(w, h, d);
+      const minDim = Math.min(w, h, d);
+      const ratio = maxDim / minDim;
+      if (ratio > TUNING.maxAspectRatio) {
+        const correctedMin = maxDim / TUNING.maxAspectRatio;
+        if (w === minDim) w = correctedMin;
+        else if (h === minDim) h = correctedMin;
+        else d = correctedMin;
+      }
+      return { w, h, d };
+    }
+
+    function createRockShapeData() {
+      const baseRadius = rand(0.055, 0.1);
+      const geometry = new THREE.DodecahedronGeometry(baseRadius, 0);
+      const sizeMul = rand(4.8, 6.0);
+
+      // Reuse the old version's idea: non-uniform scaling gives varied rock silhouettes.
+      geometry.scale(
+        rand(0.68, 1.55) * sizeMul,
+        rand(0.6, 1.4) * sizeMul,
+        rand(0.68, 1.55) * sizeMul
+      );
+      geometry.rotateY(rand(0, Math.PI * 2));
+      geometry.computeVertexNormals();
+      geometry.computeBoundingBox();
+
+      const bb = geometry.boundingBox;
+      const hx = Math.max(0.012, (bb.max.x - bb.min.x) * 0.5);
+      const hy = Math.max(0.012, (bb.max.y - bb.min.y) * 0.5);
+      const hz = Math.max(0.012, (bb.max.z - bb.min.z) * 0.5);
+
+      const pos = geometry.attributes.position.array;
+      const colliderPoints = new Float32Array(pos.length);
+      colliderPoints.set(pos);
+
+      return {
+        geometry,
+        colliderPoints,
+        halfExtents: { x: hx, y: hy, z: hz },
+      };
+    }
+
+    function makeStoneMesh(shapeData, color = 0xa8afb6) {
+      const geom = shapeData.geometry.clone();
+      geom.computeVertexNormals();
+      const mat = new THREE.MeshStandardMaterial({
+        color,
+        roughness: 0.88,
+        metalness: 0.03,
+        flatShading: true,
+        side: THREE.DoubleSide,
+      });
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+
+      const edges = new THREE.EdgesGeometry(geom);
+      const line = new THREE.LineSegments(
+        edges,
+        new THREE.LineBasicMaterial({ color: 0xe8f6ff, transparent: true, opacity: 0.95 })
+      );
+      line.visible = false;
+      mesh.add(line);
+
+      return { mesh, outline: line };
+    }
+
+    function buildStoneRigidBody(shapeData, pos, bodyType) {
+      let rbDesc;
+      if (bodyType === "kinematic") rbDesc = RAPIER.RigidBodyDesc.kinematicPositionBased();
+      else if (bodyType === "fixed") rbDesc = RAPIER.RigidBodyDesc.fixed();
+      else rbDesc = RAPIER.RigidBodyDesc.dynamic();
+
+      rbDesc.setTranslation(pos.x, pos.y, pos.z);
+      const body = world.createRigidBody(rbDesc);
+
+      const hullDesc = RAPIER.ColliderDesc.convexHull(shapeData.colliderPoints);
+      const colDesc = hullDesc || RAPIER.ColliderDesc.cuboid(
+        shapeData.halfExtents.x,
+        shapeData.halfExtents.y,
+        shapeData.halfExtents.z
+      );
+      const collider = world.createCollider(
+        colDesc
+          .setFriction(TUNING.stoneFriction)
+          .setRestitution(TUNING.stoneRestitution)
+          .setDensity(TUNING.stoneDensity),
+        body
+      );
+
+      return { body, collider };
+    }
+
+    function setStoneActiveVisual(stone, on) {
+      if (!stone) return;
+      stone.outline.visible = !!on;
+      if (on) {
+        stone.mesh.material.color.setHex(0xb5c4ce);
+      } else {
+        stone.mesh.material.color.setHex(0xa8afb6);
+      }
+    }
+
+    function destroyStoneBody(stone) {
+      if (!stone || !stone.body) return;
+      world.removeRigidBody(stone.body);
+      stone.body = null;
+      stone.collider = null;
+    }
+
+    function attachDynamicBehavior(stone) {
+      stone.gentleTimer = 0;
+      stone.gentleDuration = rand(TUNING.gentleDurationMin, TUNING.gentleDurationMax);
+      stone.body.setGravityScale(TUNING.gentleGravityScale, true);
+      stone.body.wakeUp();
+      dynamicStones.push(stone);
+    }
+
+    function spawnActiveStone() {
+      const shapeData = createRockShapeData();
+      const pos = {
+        x: rand(-TUNING.spawnRange, TUNING.spawnRange),
+        y: TUNING.spawnY,
+        z: rand(-TUNING.spawnRange, TUNING.spawnRange),
+      };
+
+      const { mesh, outline } = makeStoneMesh(shapeData);
+      mesh.position.set(pos.x, pos.y, pos.z);
+      scene.add(mesh);
+
+      const { body, collider } = buildStoneRigidBody(shapeData, pos, "kinematic");
+
+      activeStone = {
+        mesh,
+        outline,
+        body,
+        collider,
+        shapeData,
+        isActive: true,
+      };
+      setStoneActiveVisual(activeStone, true);
+      stones.push(activeStone);
+    }
+
+    function beginGrab(clientX, clientY, mode) {
+      if (!activeStone || isGrabbing) return;
+
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointerNdc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      pointerNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(pointerNdc, camera);
+      const hit = raycaster.intersectObject(activeStone.mesh, false);
+      if (!hit.length) return;
+
+      isGrabbing = true;
+      grabMode = mode;
+      controls.enabled = false;
+      lastPointerX = clientX;
+      lastPointerY = clientY;
+
+      if (mode === "move") {
+        const camForward = new THREE.Vector3();
+        camera.getWorldDirection(camForward);
+        dragPlane.setFromNormalAndCoplanarPoint(camForward, activeStone.mesh.position);
+        raycaster.ray.intersectPlane(dragPlane, dragHit);
+        if (dragHit) {
+          dragOffset.copy(activeStone.mesh.position).sub(dragHit);
+        } else {
+          dragOffset.set(0, 0, 0);
+        }
+      }
+    }
+
+    function updateGrabMove(clientX, clientY) {
+      if (!isGrabbing || !activeStone) return;
+
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointerNdc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      pointerNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointerNdc, camera);
+
+      if (!raycaster.ray.intersectPlane(dragPlane, dragHit)) return;
+
+      activeStone.mesh.position.set(
+        dragHit.x + dragOffset.x,
+        dragHit.y + dragOffset.y,
+        dragHit.z + dragOffset.z
+      );
+      activeStone.body.setNextKinematicTranslation(activeStone.mesh.position);
+    }
+
+    function updateGrabRotate(clientX, clientY) {
+      if (!isGrabbing || !activeStone) return;
+      const dx = clientX - lastPointerX;
+      const dy = clientY - lastPointerY;
+      lastPointerX = clientX;
+      lastPointerY = clientY;
+
+      const cameraForward = new THREE.Vector3();
+      const cameraRight = new THREE.Vector3();
+      const cameraUp = new THREE.Vector3();
+      camera.getWorldDirection(cameraForward);
+      cameraRight.crossVectors(cameraForward, camera.up).normalize();
+      cameraUp.copy(camera.up).normalize();
+
+      const qYaw = new THREE.Quaternion().setFromAxisAngle(cameraUp, dx * TUNING.dragRotateSpeed);
+      const qPitch = new THREE.Quaternion().setFromAxisAngle(cameraRight, dy * TUNING.dragRotateSpeed);
+      activeStone.mesh.quaternion.premultiply(qYaw);
+      activeStone.mesh.quaternion.premultiply(qPitch);
+      activeStone.body.setNextKinematicRotation(activeStone.mesh.quaternion);
+      activeStone.body.setNextKinematicTranslation(activeStone.mesh.position);
+    }
+
+    function switchStoneBodyToDynamic(stone) {
+      if (!stone) return;
+
+      const p = stone.mesh.position;
+      const q = stone.mesh.quaternion;
+
+      destroyStoneBody(stone);
+
+      const { body, collider } = buildStoneRigidBody(stone.shapeData, p, "dynamic");
+      body.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
+      body.setLinearDamping(0.2);
+      body.setAngularDamping(0.5);
+      stone.body = body;
+      stone.collider = collider;
+
+      attachDynamicBehavior(stone);
+    }
+
+    function endGrab(releaseStone) {
+      if (!activeStone) return;
+
+      if (isGrabbing) {
+        isGrabbing = false;
+        grabMode = "none";
+        controls.enabled = true;
+      }
+
+      if (!releaseStone) return;
+
+      const released = activeStone;
+      setStoneActiveVisual(released, false);
+      released.isActive = false;
+
+      switchStoneBodyToDynamic(released);
+      activeStone = null;
+
+      stackCount += 1;
+      stackCountEl.textContent = String(stackCount);
+
+      spawnActiveStone();
+    }
+
+    function setViewPolar(targetPolar) {
+      const currentPolar = controls.getPolarAngle();
+      const focus = activeStone ? activeStone.mesh.position : controls.target;
+      viewTween = {
+        startTime: performance.now(),
+        duration: TUNING.viewTweenSeconds * 1000,
+        startPolar: currentPolar,
+        endPolar: targetPolar,
+        azimuth: controls.getAzimuthalAngle(),
+        radius: camera.position.distanceTo(controls.target),
+        startTarget: controls.target.clone(),
+        endTarget: new THREE.Vector3(focus.x, focus.y, focus.z),
+      };
+    }
+
+    function setViewTop() {
+      setViewPolar(TUNING.topPolar);
+    }
+
+    function setViewSide() {
+      setViewPolar(TUNING.sidePolar);
+    }
+
+    function updateViewTween() {
+      if (!viewTween) return;
+      const now = performance.now();
+      const t = clamp((now - viewTween.startTime) / viewTween.duration, 0, 1);
+      const e = TUNING.viewEasing(t);
+
+      const target = new THREE.Vector3().lerpVectors(viewTween.startTarget, viewTween.endTarget, e);
+      const polar = THREE.MathUtils.lerp(viewTween.startPolar, viewTween.endPolar, e);
+
+      const sinPolar = Math.sin(polar);
+      const x = viewTween.radius * sinPolar * Math.sin(viewTween.azimuth);
+      const y = viewTween.radius * Math.cos(polar);
+      const z = viewTween.radius * sinPolar * Math.cos(viewTween.azimuth);
+
+      controls.target.copy(target);
+
+      camera.position.set(
+        target.x + x,
+        target.y + y,
+        target.z + z
+      );
+      camera.lookAt(target);
+
+      if (t >= 1) {
+        viewTween = null;
+      }
+    }
+
+    function updateDynamicStoneEffects(delta) {
+      for (let i = dynamicStones.length - 1; i >= 0; i -= 1) {
+        const stone = dynamicStones[i];
+        if (!stone.body) {
+          dynamicStones.splice(i, 1);
+          continue;
+        }
+
+        stone.gentleTimer += delta;
+        const ratio = clamp(stone.gentleTimer / stone.gentleDuration, 0, 1);
+        const gravityScale = THREE.MathUtils.lerp(TUNING.gentleGravityScale, 1.0, ratio);
+        stone.body.setGravityScale(gravityScale, true);
+
+        if (ratio < 1) {
+          const lv = stone.body.linvel();
+          if (lv.y < -TUNING.gentleMaxDownSpeed) {
+            stone.body.setLinvel({ x: lv.x, y: -TUNING.gentleMaxDownSpeed, z: lv.z }, true);
+          }
+        }
+
+        if (ratio >= 1) {
+          stone.body.setGravityScale(1.0, true);
+          dynamicStones.splice(i, 1);
+        }
+      }
+    }
+
+    function syncMeshesFromPhysics() {
+      for (let i = 0; i < stones.length; i += 1) {
+        const stone = stones[i];
+        if (!stone.body) continue;
+        const pos = stone.body.translation();
+        const rot = stone.body.rotation();
+        stone.mesh.position.set(pos.x, pos.y, pos.z);
+        stone.mesh.quaternion.set(rot.x, rot.y, rot.z, rot.w);
+      }
+    }
+
+    function onPointerDown(e) {
+      pointerIsDown = true;
+      if (e.button === 0) {
+        beginGrab(e.clientX, e.clientY, "move");
+      } else if (e.button === 2) {
+        beginGrab(e.clientX, e.clientY, "rotate");
+      }
+      if (isGrabbing) {
+        activePointerId = e.pointerId;
+        renderer.domElement.setPointerCapture(e.pointerId);
+      }
+    }
+
+    function onPointerMove(e) {
+      if (!pointerIsDown) return;
+      if (!isGrabbing) return;
+      if (grabMode === "move") {
+        updateGrabMove(e.clientX, e.clientY);
+      } else if (grabMode === "rotate") {
+        updateGrabRotate(e.clientX, e.clientY);
+      }
+    }
+
+    function onPointerUp(e) {
+      pointerIsDown = false;
+      if (activePointerId !== null && e && e.pointerId === activePointerId) {
+        renderer.domElement.releasePointerCapture(activePointerId);
+        activePointerId = null;
+      }
+      if (isGrabbing) {
+        endGrab(false);
+      }
+    }
+
+    function onKeyDown(e) {
+      if (e.code === "Digit1") setViewTop();
+      if (e.code === "Digit2") setViewSide();
+      if (e.code === "Space") {
+        e.preventDefault();
+        endGrab(true);
+      }
+    }
+
+    function onGiveUp() {
+      pointerIsDown = false;
+      if (isGrabbing) {
+        endGrab(false);
+      }
+
+      for (let i = 0; i < stones.length; i += 1) {
+        const stone = stones[i];
+        if (stone.body) {
+          destroyStoneBody(stone);
+        }
+        scene.remove(stone.mesh);
+      }
+      stones.length = 0;
+      dynamicStones.length = 0;
+      activeStone = null;
+      stackCount = 0;
+      stackCountEl.textContent = "0";
+
+      spawnActiveStone();
+    }
+
+    function onResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    let accumulator = 0;
+    let lastTs = performance.now();
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const now = performance.now();
+      let frameDt = (now - lastTs) / 1000;
+      lastTs = now;
+      frameDt = Math.min(frameDt, 0.1);
+
+      updateViewTween();
+
+      if (activeStone && activeStone.body && isGrabbing) {
+        activeStone.body.setNextKinematicRotation(activeStone.mesh.quaternion);
+        activeStone.body.setNextKinematicTranslation(activeStone.mesh.position);
+      }
+
+      accumulator += frameDt;
+      while (accumulator >= TUNING.fixedDt) {
+        updateDynamicStoneEffects(TUNING.fixedDt);
+        world.step();
+        accumulator -= TUNING.fixedDt;
+      }
+
+      syncMeshesFromPhysics();
+
+      if (!isGrabbing) {
+        controls.enabled = true;
+      }
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    async function main() {
+      await loadDependencies();
+      initThree();
+      await initRapier();
+      createGround();
+      spawnActiveStone();
+      animate();
+    }
+
+    main().catch((err) => {
+      console.error(err);
+      showFatal(String(err && err.message ? err.message : err));
+    });
+  </script>
+</body>
+</html>
