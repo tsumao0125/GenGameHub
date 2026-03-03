@@ -271,7 +271,7 @@ Space: drop
       gravity: -9.81,
       stoneFriction: 3.0,
       stoneRestitution: 0.0,
-      stoneDensity: 20.0,
+      stoneDensity: 20000.0,
       groundFriction: 2.0,
       groundRestitution: 0.01,
       spawnY: 2.3,
@@ -312,6 +312,7 @@ Space: drop
 
     let groundMesh;
     let groundBody;
+    let groundCollider;
 
     let activeStone = null;
     let stackCount = 0;
@@ -728,13 +729,13 @@ Space: drop
       createRiverBackdrop();
       createSkyDome();
 
-      const rbDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(0, 0, 0);
+      const rbDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(0, -0.1, 0);
       groundBody = world.createRigidBody(rbDesc);
 
       const colDesc = RAPIER.ColliderDesc.cuboid(groundSize / 2, 0.1, groundSize / 2)
         .setFriction(TUNING.groundFriction)
         .setRestitution(TUNING.groundRestitution);
-      world.createCollider(colDesc, groundBody);
+      groundCollider = world.createCollider(colDesc, groundBody);
     }
 
     function randomStoneSize() {
@@ -861,6 +862,45 @@ Space: drop
 
     function canMoveActiveTo(targetPos) {
       if (!activeStone) return false;
+      if (!world || !activeStone.shapeData) return false;
+
+      if (typeof world.intersectionsWithCollider === "function") {
+        const q = activeStone.mesh.quaternion;
+        const testRb = world.createRigidBody(
+          RAPIER.RigidBodyDesc.fixed().setTranslation(targetPos.x, targetPos.y, targetPos.z)
+        );
+        testRb.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
+
+        let testDesc = RAPIER.ColliderDesc.convexHull(activeStone.shapeData.colliderPoints);
+        if (!testDesc) {
+          const h = activeStone.shapeData.halfExtents;
+          testDesc = RAPIER.ColliderDesc.cuboid(h.x, h.y, h.z);
+        }
+        if (testDesc.setSensor) testDesc.setSensor(true);
+        const testCol = world.createCollider(testDesc, testRb);
+
+        let blocked = false;
+        world.intersectionsWithCollider(testCol, (other) => {
+          if (!other) return true;
+          if (groundCollider && other.handle === groundCollider.handle) return true;
+          if (activeStone.collider && other.handle === activeStone.collider.handle) return true;
+
+          for (let i = 0; i < stones.length; i += 1) {
+            const s = stones[i];
+            if (s === activeStone || s.isActive || !s.collider) continue;
+            if (s.collider.handle === other.handle) {
+              blocked = true;
+              return false;
+            }
+          }
+          return true;
+        });
+
+        world.removeRigidBody(testRb);
+        return !blocked;
+      }
+
+      // Fallback if query API is unavailable.
       const h1 = activeStone.shapeData.halfExtents;
       for (let i = 0; i < stones.length; i += 1) {
         const s = stones[i];
@@ -870,11 +910,7 @@ Space: drop
         const dx = Math.abs(targetPos.x - p.x);
         const dy = Math.abs(targetPos.y - p.y);
         const dz = Math.abs(targetPos.z - p.z);
-        if (
-          dx < (h1.x + h2.x) * 0.96 &&
-          dy < (h1.y + h2.y) * 0.96 &&
-          dz < (h1.z + h2.z) * 0.96
-        ) {
+        if (dx < (h1.x + h2.x) * 0.96 && dy < (h1.y + h2.y) * 0.96 && dz < (h1.z + h2.z) * 0.96) {
           return false;
         }
       }
@@ -964,6 +1000,37 @@ Space: drop
       }
     }
 
+    function moveActiveStoneClosestTo(target) {
+      if (!activeStone) return;
+
+      if (canMoveActiveTo(target)) {
+        activeStone.mesh.position.copy(target);
+        activeStone.body.setNextKinematicTranslation(activeStone.mesh.position);
+        return;
+      }
+
+      // If blocked, binary-search the furthest reachable point toward target.
+      const start = activeStone.mesh.position.clone();
+      const probe = new THREE.Vector3();
+      const best = start.clone();
+      let lo = 0;
+      let hi = 1;
+
+      for (let i = 0; i < 10; i += 1) {
+        const mid = (lo + hi) * 0.5;
+        probe.lerpVectors(start, target, mid);
+        if (canMoveActiveTo(probe)) {
+          best.copy(probe);
+          lo = mid;
+        } else {
+          hi = mid;
+        }
+      }
+
+      activeStone.mesh.position.copy(best);
+      activeStone.body.setNextKinematicTranslation(activeStone.mesh.position);
+    }
+
     function updateGrabMove(clientX, clientY) {
       if (!isGrabbing || !activeStone) return;
 
@@ -980,9 +1047,7 @@ Space: drop
         Math.max(minY, dragHit.y + dragOffset.y),
         dragHit.z + dragOffset.z
       );
-      if (!canMoveActiveTo(target)) return;
-      activeStone.mesh.position.copy(target);
-      activeStone.body.setNextKinematicTranslation(activeStone.mesh.position);
+      moveActiveStoneClosestTo(target);
     }
 
     function updateGrabRotate(clientX, clientY) {
@@ -1148,15 +1213,46 @@ Space: drop
 
     function checkGameOverByGroundContact() {
       if (gameOver) return;
-      const eps = 0.005;
+
+      // Rule: game over when two or more non-active stones touch the ground.
+      // Vertex-based world-space check avoids missing contacts due to physics query timing.
+      const eps = 0.06;
+      let groundedCount = 0;
+
       for (let i = 0; i < stones.length; i += 1) {
         const s = stones[i];
-        if (!s.body || !s.spawnIndex || s.spawnIndex < 2) continue;
-        const p = s.body.translation();
-        const bottom = p.y - s.shapeData.halfExtents.y;
-        if (bottom <= eps) {
-          triggerGameOver();
-          return;
+        if (!s.body || !s.mesh) continue;
+
+        const geometry = s.mesh.geometry;
+        const posAttr = geometry && geometry.attributes ? geometry.attributes.position : null;
+        if (!posAttr || !posAttr.count) continue;
+
+        s.mesh.updateMatrixWorld(true);
+        const m = s.mesh.matrixWorld.elements;
+        let minY = Infinity;
+
+        for (let vi = 0; vi < posAttr.count; vi += 1) {
+          const x = posAttr.getX(vi);
+          const y = posAttr.getY(vi);
+          const z = posAttr.getZ(vi);
+          const wy = m[1] * x + m[5] * y + m[9] * z + m[13];
+          if (wy < minY) minY = wy;
+        }
+
+        const grounded = minY <= eps;
+        if (grounded) {
+          s.mesh.material.color.setHex(0xd14a4a);
+          if (!s.isActive) {
+            groundedCount += 1;
+            if (groundedCount >= 2) {
+              triggerGameOver();
+              return;
+            }
+          }
+        } else if (s.isActive) {
+          s.mesh.material.color.setHex(0xb5c4ce);
+        } else {
+          s.mesh.material.color.setHex(0xa8afb6);
         }
       }
     }
@@ -1319,6 +1415,13 @@ Space: drop
   </script>
 </body>
 </html>
+
+
+
+
+
+
+
 
 
 
