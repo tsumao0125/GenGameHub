@@ -72,6 +72,26 @@
       white-space: pre-line;
     }
 
+    #gameOverOverlay {
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      background: rgba(0, 0, 0, 0.15);
+      color: #ffd8d8;
+      font-size: 48px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    }
+
+    #gameOverOverlay.on {
+      display: flex;
+    }
+
     .label {
       color: var(--accent);
       font-weight: 600;
@@ -82,6 +102,8 @@
   <div id="app">
     <div id="hudTopLeft">
       <span class="label">stackCount</span>: <span id="stackCount">0</span>
+      <br />
+      <span class="label">height</span>: <span id="stackHeight">0.00 m</span>
       <button id="giveUpBtn" type="button">Give Up</button>
     </div>
     <div id="hudBottomRight">L-drag (empty): pan camera
@@ -91,6 +113,7 @@ R-drag (active stone): rotate stone
 Space: drop
 1: top view (center active stone)
 2: side view (center active stone)</div>
+    <div id="gameOverOverlay">GAME OVER</div>
   </div>
 
   <script type="importmap">
@@ -138,6 +161,8 @@ Space: drop
 
     const app = document.getElementById("app");
     const stackCountEl = document.getElementById("stackCount");
+    const stackHeightEl = document.getElementById("stackHeight");
+    const gameOverOverlayEl = document.getElementById("gameOverOverlay");
     const giveUpBtn = document.getElementById("giveUpBtn");
 
     let scene;
@@ -151,6 +176,8 @@ Space: drop
 
     let activeStone = null;
     let stackCount = 0;
+    let gameOver = false;
+    let spawnedStoneCount = 0;
 
     let raycaster;
     let pointerNdc;
@@ -433,6 +460,41 @@ Space: drop
       }
     }
 
+    function updateHudStats() {
+      let maxTop = 0;
+      for (let i = 0; i < stones.length; i += 1) {
+        const stone = stones[i];
+        if (stone.isActive || !stone.body) continue;
+        const p = stone.body.translation();
+        const top = p.y + stone.shapeData.halfExtents.y;
+        if (top > maxTop) maxTop = top;
+      }
+      stackCountEl.textContent = String(stackCount);
+      stackHeightEl.textContent = `${maxTop.toFixed(2)} m`;
+    }
+
+    function canMoveActiveTo(targetPos) {
+      if (!activeStone) return false;
+      const h1 = activeStone.shapeData.halfExtents;
+      for (let i = 0; i < stones.length; i += 1) {
+        const s = stones[i];
+        if (s === activeStone || s.isActive || !s.body) continue;
+        const p = s.body.translation();
+        const h2 = s.shapeData.halfExtents;
+        const dx = Math.abs(targetPos.x - p.x);
+        const dy = Math.abs(targetPos.y - p.y);
+        const dz = Math.abs(targetPos.z - p.z);
+        if (
+          dx < (h1.x + h2.x) * 0.96 &&
+          dy < (h1.y + h2.y) * 0.96 &&
+          dz < (h1.z + h2.z) * 0.96
+        ) {
+          return false;
+        }
+      }
+      return true;
+    }
+
     function destroyStoneBody(stone) {
       if (!stone || !stone.body) return;
       world.removeRigidBody(stone.body);
@@ -468,8 +530,10 @@ Space: drop
         body,
         collider,
         shapeData,
+        spawnIndex: spawnedStoneCount + 1,
         isActive: true,
       };
+      spawnedStoneCount += 1;
       setStoneActiveVisual(activeStone, true);
       stones.push(activeStone);
     }
@@ -514,11 +578,14 @@ Space: drop
 
       if (!raycaster.ray.intersectPlane(dragPlane, dragHit)) return;
 
-      activeStone.mesh.position.set(
+      const minY = activeStone.shapeData.halfExtents.y;
+      const target = new THREE.Vector3(
         dragHit.x + dragOffset.x,
-        dragHit.y + dragOffset.y,
+        Math.max(minY, dragHit.y + dragOffset.y),
         dragHit.z + dragOffset.z
       );
+      if (!canMoveActiveTo(target)) return;
+      activeStone.mesh.position.copy(target);
       activeStone.body.setNextKinematicTranslation(activeStone.mesh.position);
     }
 
@@ -581,9 +648,11 @@ Space: drop
       activeStone = null;
 
       stackCount += 1;
-      stackCountEl.textContent = String(stackCount);
+      updateHudStats();
 
-      spawnActiveStone();
+      if (!gameOver) {
+        spawnActiveStone();
+      }
     }
 
     function setViewPolar(targetPolar) {
@@ -664,6 +733,37 @@ Space: drop
       }
     }
 
+    function triggerGameOver() {
+      if (gameOver) return;
+      gameOver = true;
+      gameOverOverlayEl.classList.add("on");
+      if (isGrabbing) {
+        endGrab(false);
+      }
+      if (activeStone) {
+        scene.remove(activeStone.mesh);
+        destroyStoneBody(activeStone);
+        const idx = stones.indexOf(activeStone);
+        if (idx >= 0) stones.splice(idx, 1);
+        activeStone = null;
+      }
+    }
+
+    function checkGameOverByGroundContact() {
+      if (gameOver) return;
+      const eps = 0.005;
+      for (let i = 0; i < stones.length; i += 1) {
+        const s = stones[i];
+        if (!s.body || !s.spawnIndex || s.spawnIndex < 2) continue;
+        const p = s.body.translation();
+        const bottom = p.y - s.shapeData.halfExtents.y;
+        if (bottom <= eps) {
+          triggerGameOver();
+          return;
+        }
+      }
+    }
+
     function syncMeshesFromPhysics() {
       for (let i = 0; i < stones.length; i += 1) {
         const stone = stones[i];
@@ -676,6 +776,7 @@ Space: drop
     }
 
     function onPointerDown(e) {
+      if (gameOver) return;
       pointerIsDown = true;
       if (e.button === 0) {
         beginGrab(e.clientX, e.clientY, "move");
@@ -710,6 +811,7 @@ Space: drop
     }
 
     function onKeyDown(e) {
+      if (gameOver && e.code !== "Digit1" && e.code !== "Digit2") return;
       if (e.code === "Digit1") setViewTop();
       if (e.code === "Digit2") setViewSide();
       if (e.code === "Space") {
@@ -735,7 +837,11 @@ Space: drop
       dynamicStones.length = 0;
       activeStone = null;
       stackCount = 0;
-      stackCountEl.textContent = "0";
+      spawnedStoneCount = 0;
+      gameOver = false;
+      gameOverOverlayEl.classList.remove("on");
+      stackHeightEl.textContent = "0.00 m";
+      updateHudStats();
 
       spawnActiveStone();
     }
@@ -772,6 +878,8 @@ Space: drop
       }
 
       syncMeshesFromPhysics();
+      checkGameOverByGroundContact();
+      updateHudStats();
 
       if (!isGrabbing) {
         controls.enabled = true;
