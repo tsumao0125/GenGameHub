@@ -92,6 +92,67 @@
       display: flex;
     }
 
+    #gameOverContent {
+      text-align: center;
+      pointer-events: auto;
+    }
+
+    #stackAgainBtn {
+      margin-top: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.42);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.16);
+      color: #fff;
+      font-size: 16px;
+      font-weight: 700;
+      padding: 10px 16px;
+      cursor: pointer;
+    }
+
+    #startOverlay {
+      position: absolute;
+      inset: 0;
+      z-index: 30;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      background: rgba(12, 18, 24, 0.72);
+    }
+
+    #startOverlay.hide {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.5s ease;
+    }
+
+    #startLogo {
+      width: min(60vw, 360px);
+      opacity: 0;
+      animation: logoFadeIn 2.2s ease forwards;
+      filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.35));
+    }
+
+    #beginBtn {
+      border: 1px solid rgba(255, 255, 255, 0.5);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.18);
+      color: #ffffff;
+      font-size: 18px;
+      font-weight: 700;
+      padding: 12px 22px;
+      cursor: pointer;
+      opacity: 0;
+      animation: logoFadeIn 2.2s ease forwards;
+      animation-delay: 0.8s;
+    }
+
+    @keyframes logoFadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
     .label {
       color: var(--accent);
       font-weight: 600;
@@ -113,7 +174,16 @@ R-drag (active stone): rotate stone
 Space: drop
 1: top view (center active stone)
 2: side view (center active stone)</div>
-    <div id="gameOverOverlay">GAME OVER</div>
+    <div id="gameOverOverlay">
+      <div id="gameOverContent">
+        <div>GAME OVER</div>
+        <button id="stackAgainBtn" type="button">Stack Again</button>
+      </div>
+    </div>
+    <div id="startOverlay">
+      <img id="startLogo" src="img/logo.png" alt="Sai logo" />
+      <button id="beginBtn" type="button">Begin Stacking</button>
+    </div>
   </div>
 
   <script type="importmap">
@@ -163,6 +233,9 @@ Space: drop
     const stackCountEl = document.getElementById("stackCount");
     const stackHeightEl = document.getElementById("stackHeight");
     const gameOverOverlayEl = document.getElementById("gameOverOverlay");
+    const stackAgainBtn = document.getElementById("stackAgainBtn");
+    const startOverlayEl = document.getElementById("startOverlay");
+    const beginBtn = document.getElementById("beginBtn");
     const giveUpBtn = document.getElementById("giveUpBtn");
 
     let scene;
@@ -177,6 +250,7 @@ Space: drop
     let activeStone = null;
     let stackCount = 0;
     let gameOver = false;
+    let gameStarted = false;
     let spawnedStoneCount = 0;
 
     let raycaster;
@@ -286,6 +360,8 @@ Space: drop
       window.addEventListener("pointercancel", onPointerUp);
       window.addEventListener("keydown", onKeyDown);
       giveUpBtn.addEventListener("click", onGiveUp);
+      beginBtn.addEventListener("click", onBeginStacking);
+      stackAgainBtn.addEventListener("click", onGiveUp);
     }
 
     async function initRapier() {
@@ -776,6 +852,7 @@ Space: drop
     }
 
     function onPointerDown(e) {
+      if (!gameStarted) return;
       if (gameOver) return;
       pointerIsDown = true;
       if (e.button === 0) {
@@ -811,6 +888,7 @@ Space: drop
     }
 
     function onKeyDown(e) {
+      if (!gameStarted) return;
       if (gameOver && e.code !== "Digit1" && e.code !== "Digit2") return;
       if (e.code === "Digit1") setViewTop();
       if (e.code === "Digit2") setViewSide();
@@ -820,7 +898,15 @@ Space: drop
       }
     }
 
+    function onBeginStacking() {
+      if (gameStarted) return;
+      gameStarted = true;
+      startOverlayEl.classList.add("hide");
+      onGiveUp();
+    }
+
     function onGiveUp() {
+      if (!gameStarted) return;
       pointerIsDown = false;
       if (isGrabbing) {
         endGrab(false);
@@ -893,7 +979,6 @@ Space: drop
       initThree();
       await initRapier();
       createGround();
-      spawnActiveStone();
       animate();
     }
 
