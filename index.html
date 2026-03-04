@@ -280,10 +280,10 @@ Space: drop
       maxStoneSize: 1.2,
       maxAspectRatio: 2.4,
       dragRotateSpeed: 0.012,
-      gentleDurationMin: 0.9,
-      gentleDurationMax: 1.4,
-      gentleGravityScale: 0.06,
-      gentleMaxDownSpeed: 0.75,
+      gentleDurationMin: 1.2,
+      gentleDurationMax: 1.9,
+      gentleGravityScale: 0.035,
+      gentleMaxDownSpeed: 0.5,
       topPolar: 0.01,
       sidePolar: Math.PI / 2,
       viewTweenSeconds: 0.32,
@@ -333,6 +333,8 @@ Space: drop
     let lastPointerX = 0;
     let lastPointerY = 0;
     let activePointerId = null;
+    let dragProbeBody = null;
+    let dragProbeCollider = null;
 
     const dynamicStones = [];
     const stones = [];
@@ -612,7 +614,7 @@ Space: drop
       scene.fog = new THREE.Fog(0xb4d8f6, 25, 90);
 
       camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 250);
-      camera.position.set(9, 8, 11);
+      camera.position.set(7.2, 6.4, 8.8);
 
       renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -663,7 +665,7 @@ Space: drop
       window.addEventListener("keydown", onKeyDown);
       giveUpBtn.addEventListener("click", onGiveUp);
       beginBtn.addEventListener("click", onBeginStacking);
-      stackAgainBtn.addEventListener("click", onGiveUp);
+      stackAgainBtn.addEventListener("click", onStackAgain);
     }
 
     async function initRapier() {
@@ -826,6 +828,9 @@ Space: drop
         shapeData.halfExtents.y,
         shapeData.halfExtents.z
       );
+      if (bodyType === "kinematic" && colDesc.setSensor) {
+        colDesc.setSensor(true);
+      }
       const collider = world.createCollider(
         colDesc
           .setFriction(TUNING.stoneFriction)
@@ -860,27 +865,51 @@ Space: drop
       stackHeightEl.textContent = `${maxTop.toFixed(2)} m`;
     }
 
+    function ensureDragProbe() {
+      if (!activeStone || !world || !activeStone.shapeData) return false;
+      if (dragProbeBody && dragProbeCollider) return true;
+
+      const q = activeStone.mesh.quaternion;
+      dragProbeBody = world.createRigidBody(
+        RAPIER.RigidBodyDesc.fixed().setTranslation(
+          activeStone.mesh.position.x,
+          activeStone.mesh.position.y,
+          activeStone.mesh.position.z
+        )
+      );
+      dragProbeBody.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
+
+      let probeDesc = RAPIER.ColliderDesc.convexHull(activeStone.shapeData.colliderPoints);
+      if (!probeDesc) {
+        const h = activeStone.shapeData.halfExtents;
+        probeDesc = RAPIER.ColliderDesc.cuboid(h.x, h.y, h.z);
+      }
+      if (probeDesc.setSensor) probeDesc.setSensor(true);
+      dragProbeCollider = world.createCollider(probeDesc, dragProbeBody);
+      return true;
+    }
+
+    function destroyDragProbe() {
+      if (dragProbeBody) {
+        world.removeRigidBody(dragProbeBody);
+      }
+      dragProbeBody = null;
+      dragProbeCollider = null;
+    }
+
     function canMoveActiveTo(targetPos) {
       if (!activeStone) return false;
       if (!world || !activeStone.shapeData) return false;
 
       if (typeof world.intersectionsWithCollider === "function") {
-        const q = activeStone.mesh.quaternion;
-        const testRb = world.createRigidBody(
-          RAPIER.RigidBodyDesc.fixed().setTranslation(targetPos.x, targetPos.y, targetPos.z)
-        );
-        testRb.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
+        if (!ensureDragProbe()) return false;
 
-        let testDesc = RAPIER.ColliderDesc.convexHull(activeStone.shapeData.colliderPoints);
-        if (!testDesc) {
-          const h = activeStone.shapeData.halfExtents;
-          testDesc = RAPIER.ColliderDesc.cuboid(h.x, h.y, h.z);
-        }
-        if (testDesc.setSensor) testDesc.setSensor(true);
-        const testCol = world.createCollider(testDesc, testRb);
+        const q = activeStone.mesh.quaternion;
+        dragProbeBody.setTranslation({ x: targetPos.x, y: targetPos.y, z: targetPos.z }, true);
+        dragProbeBody.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
 
         let blocked = false;
-        world.intersectionsWithCollider(testCol, (other) => {
+        world.intersectionsWithCollider(dragProbeCollider, (other) => {
           if (!other) return true;
           if (groundCollider && other.handle === groundCollider.handle) return true;
           if (activeStone.collider && other.handle === activeStone.collider.handle) return true;
@@ -896,7 +925,6 @@ Space: drop
           return true;
         });
 
-        world.removeRigidBody(testRb);
         return !blocked;
       }
 
@@ -983,11 +1011,13 @@ Space: drop
 
       isGrabbing = true;
       grabMode = mode;
+      destroyDragProbe();
       controls.enabled = false;
       lastPointerX = clientX;
       lastPointerY = clientY;
 
       if (mode === "move") {
+        ensureDragProbe();
         const camForward = new THREE.Vector3();
         camera.getWorldDirection(camForward);
         dragPlane.setFromNormalAndCoplanarPoint(camForward, activeStone.mesh.position);
@@ -1016,7 +1046,7 @@ Space: drop
       let lo = 0;
       let hi = 1;
 
-      for (let i = 0; i < 10; i += 1) {
+      for (let i = 0; i < 14; i += 1) {
         const mid = (lo + hi) * 0.5;
         probe.lerpVectors(start, target, mid);
         if (canMoveActiveTo(probe)) {
@@ -1097,6 +1127,7 @@ Space: drop
         isGrabbing = false;
         grabMode = "none";
         controls.enabled = true;
+        destroyDragProbe();
       }
 
       if (!releaseStone) return;
@@ -1241,7 +1272,7 @@ Space: drop
 
         const grounded = minY <= eps;
         if (grounded) {
-          s.mesh.material.color.setHex(0xd14a4a);
+          s.mesh.material.color.setHex(s.isActive ? 0xb5c4ce : 0xa8afb6);
           if (!s.isActive) {
             groundedCount += 1;
             if (groundedCount >= 2) {
@@ -1315,19 +1346,20 @@ Space: drop
       }
     }
 
-    function onBeginStacking() {
-      if (gameStarted) return;
-      gameStarted = true;
-      startOverlayEl.classList.add("hide");
-      onGiveUp();
-    }
-
-    function onGiveUp() {
-      if (!gameStarted) return;
+    function resetPlayfield(spawnStone) {
       pointerIsDown = false;
+      if (activePointerId !== null) {
+        try {
+          renderer.domElement.releasePointerCapture(activePointerId);
+        } catch (e) {
+          // Ignore release errors when pointer is already gone.
+        }
+        activePointerId = null;
+      }
       if (isGrabbing) {
         endGrab(false);
       }
+      destroyDragProbe();
 
       for (let i = 0; i < stones.length; i += 1) {
         const stone = stones[i];
@@ -1347,7 +1379,27 @@ Space: drop
       stackHeightEl.textContent = "0.00 m";
       updateHudStats();
 
-      spawnActiveStone();
+      if (spawnStone) {
+        spawnActiveStone();
+      }
+    }
+
+    function onBeginStacking() {
+      if (gameStarted) return;
+      gameStarted = true;
+      startOverlayEl.classList.add("hide");
+      resetPlayfield(true);
+    }
+
+    function onGiveUp() {
+      if (!gameStarted) return;
+      resetPlayfield(true);
+    }
+
+    function onStackAgain() {
+      resetPlayfield(false);
+      gameStarted = false;
+      startOverlayEl.classList.remove("hide");
     }
 
     function onResize() {
