@@ -112,6 +112,47 @@
       background: rgba(255, 255, 255, 0.2);
     }
 
+    #stabilityWrap {
+      position: fixed;
+      top: calc(var(--header-h) + 14px);
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 12;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: var(--hud-bg);
+      backdrop-filter: blur(2px);
+      display: none;
+      pointer-events: none;
+      min-width: 450px;
+    }
+    #stabilityWrap.on {
+      display: block;
+    }
+
+    #stabilityMeter {
+      margin-top: 4px;
+      width: 420px;
+      height: 8px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.18);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+    }
+
+    #stabilityFill {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #ff7a7a, #ffd86e 55%, #9de3a1);
+      transition: width 80ms linear;
+    }
+
+    #stabilityValue {
+      margin-left: 6px;
+      font-variant-numeric: tabular-nums;
+      color: #dff5ff;
+    }
+
     #hudBottomRight {
       position: absolute;
       right: 12px;
@@ -233,6 +274,10 @@
       <span class="label">height</span>: <span id="stackHeight">0.00 m</span>
       <button id="giveUpBtn" type="button">Give Up</button>
     </div>
+      <div id="stabilityWrap">
+        <span class="label">stability</span>: <span id="stabilityValue">--</span>
+        <div id="stabilityMeter"><div id="stabilityFill"></div></div>
+      </div>
     <div id="hudBottomRight">L-drag (empty): pan camera
 R-drag (empty): orbit camera
 L-drag (active stone): move stone (free on camera plane)
@@ -280,6 +325,7 @@ Space: drop
       maxStoneSize: 1.2,
       maxAspectRatio: 2.4,
       dragRotateSpeed: 0.012,
+      dragProbeShrink: 1.0,
       gentleDurationMin: 1.2,
       gentleDurationMax: 1.9,
       gentleGravityScale: 0.035,
@@ -295,6 +341,19 @@ Space: drop
       wave: 0,
     };
 
+    const SOUND = {
+      enabled: true,
+      mode: "synth", // "synth" | "file" (swap later without changing call sites)
+      files: {
+        place: "audio/place.wav",
+        collapse: "audio/collapse.wav",
+        stoneHit: "snd/stoneplace.wav",
+        inactiveHits: ["snd/stonehit1.wav", "snd/stonehit2.wav", "snd/stonehit3.wav"],
+      },
+      inactiveHitCooldownSec: 0.06,
+      activeHitCooldownSec: 0.08,
+    };
+
     const app = document.getElementById("app");
     const stackCountEl = document.getElementById("stackCount");
     const stackHeightEl = document.getElementById("stackHeight");
@@ -303,6 +362,9 @@ Space: drop
     const startOverlayEl = document.getElementById("startOverlay");
     const beginBtn = document.getElementById("beginBtn");
     const giveUpBtn = document.getElementById("giveUpBtn");
+    const stabilityWrapEl = document.getElementById("stabilityWrap");
+    const stabilityFillEl = document.getElementById("stabilityFill");
+    const stabilityValueEl = document.getElementById("stabilityValue");
 
     let scene;
     let camera;
@@ -320,6 +382,7 @@ Space: drop
     let gameStarted = false;
     let spawnedStoneCount = 0;
     let lastReleasedPos = null;
+    let stabilityTargetStone = null;
 
     let raycaster;
     let pointerNdc;
@@ -341,6 +404,24 @@ Space: drop
     const riverFlowMaterials = [];
 
     let viewTween = null;
+    let audioCtx = null;
+    let audioMasterGain = null;
+    let noiseBuffer = null;
+    const audioFiles = {};
+    let lastInactiveHitSfxTs = 0;
+    let prevInactiveContactPairs = new Set();
+    let lastActiveHitSfxTs = 0;
+    let textureLoader = null;
+    let texStoneNormal = null;
+    let texStoneAlbedo = null;
+    let texStoneRoughness = null;
+    let texStoneAO = null;
+    let texStoneHeight = null;
+    let texGroundNormal = null;
+    let texGroundRoughness = null;
+    let texGroundAlbedo = null;
+    let texGroundAO = null;
+    let texGroundHeight = null;
 
     function rand(min, max) {
       return min + Math.random() * (max - min);
@@ -348,6 +429,234 @@ Space: drop
 
     function clamp(v, lo, hi) {
       return Math.max(lo, Math.min(hi, v));
+    }
+
+    function ensureAudio() {
+      if (!SOUND.enabled) return false;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return false;
+      if (!audioCtx) {
+        audioCtx = new AC();
+        audioMasterGain = audioCtx.createGain();
+        audioMasterGain.gain.value = 0.4;
+        audioMasterGain.connect(audioCtx.destination);
+      }
+      if (audioCtx.state === "suspended") {
+        audioCtx.resume();
+      }
+      if (!noiseBuffer) {
+        noiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.35, audioCtx.sampleRate);
+        const data = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < data.length; i += 1) {
+          data[i] = Math.random() * 2 - 1;
+        }
+      }
+      return true;
+    }
+
+    function playFileSound(name, intensity) {
+      const src = SOUND.files[name];
+      if (!src) return;
+      if (!audioFiles[name]) {
+        audioFiles[name] = new Audio(src);
+        audioFiles[name].preload = "auto";
+      }
+      const base = audioFiles[name];
+      const a = base.cloneNode();
+      a.volume = clamp(0.35 * intensity, 0, 1);
+      a.playbackRate = clamp(0.95 + Math.random() * 0.1, 0.7, 1.3);
+      a.play().catch(() => {});
+    }
+
+    function playSynthPlace(intensity) {
+      const now = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(560, now);
+      osc.frequency.exponentialRampToValueAtTime(310, now + 0.07);
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(0.14 * intensity, now + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.085);
+      osc.connect(g).connect(audioMasterGain);
+      osc.start(now);
+      osc.stop(now + 0.09);
+    }
+
+    function playSynthCollapse(intensity) {
+      const now = audioCtx.currentTime;
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = noiseBuffer;
+      const bp = audioCtx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.setValueAtTime(520, now);
+      bp.Q.value = 0.8;
+      const ng = audioCtx.createGain();
+      ng.gain.setValueAtTime(0.0001, now);
+      ng.gain.exponentialRampToValueAtTime(0.22 * intensity, now + 0.012);
+      ng.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
+      noise.connect(bp).connect(ng).connect(audioMasterGain);
+      noise.start(now);
+      noise.stop(now + 0.25);
+
+      const thud = audioCtx.createOscillator();
+      const tg = audioCtx.createGain();
+      thud.type = "sine";
+      thud.frequency.setValueAtTime(120, now);
+      thud.frequency.exponentialRampToValueAtTime(55, now + 0.16);
+      tg.gain.setValueAtTime(0.0001, now);
+      tg.gain.exponentialRampToValueAtTime(0.16 * intensity, now + 0.01);
+      tg.gain.exponentialRampToValueAtTime(0.0001, now + 0.19);
+      thud.connect(tg).connect(audioMasterGain);
+      thud.start(now);
+      thud.stop(now + 0.2);
+    }
+
+    function playGameSound(name, intensity = 1) {
+      if (!SOUND.enabled) return;
+      const i = clamp(intensity, 0.1, 1.8);
+      if (SOUND.mode === "file") {
+        playFileSound(name, i);
+        return;
+      }
+      if (!ensureAudio()) return;
+      if (name === "place") playSynthPlace(i);
+      else if (name === "collapse") playSynthCollapse(i);
+    }
+
+    function playActiveStoneHitSfx(intensity = 1) {
+      if (!SOUND.enabled) return;
+      const now = performance.now() / 1000;
+      if (now - lastActiveHitSfxTs < SOUND.activeHitCooldownSec) return;
+      lastActiveHitSfxTs = now;
+      playFileSound("stoneHit", clamp(intensity, 0.45, 1.2));
+    }
+
+    function playInactiveStoneHitSfx(intensity = 1) {
+      if (!SOUND.enabled) return;
+      const list = SOUND.files.inactiveHits;
+      if (!list || !list.length) return;
+      const idx = Math.floor(Math.random() * list.length);
+      const pick = list[idx];
+      if (!pick) return;
+
+      const key = `inactive_${idx}`;
+      if (!audioFiles[key]) {
+        audioFiles[key] = new Audio(pick);
+        audioFiles[key].preload = "auto";
+      }
+      const base = audioFiles[key];
+      const a = base.cloneNode();
+      a.volume = clamp(0.34 * intensity, 0, 1);
+      a.playbackRate = clamp(0.92 + Math.random() * 0.16, 0.75, 1.35);
+      a.play().catch(() => {});
+    }
+
+    function detectInactiveStoneCollisionSfx() {
+      if (gameOver || !gameStarted) return;
+
+      const currentPairs = new Set();
+      let bestNewImpact = 0;
+      const nowSec = performance.now() / 1000;
+
+      // Robust pair check: overlap by AABB + relative speed (no Rapier query dependency).
+      for (let i = 0; i < stones.length; i += 1) {
+        const a = stones[i];
+        if (!a || a.isActive || !a.body || !a.shapeData) continue;
+        const pa = a.body.translation();
+        const ha = a.shapeData.halfExtents;
+        const av = a.body.linvel ? a.body.linvel() : { x: 0, y: 0, z: 0 };
+
+        for (let j = i + 1; j < stones.length; j += 1) {
+          const b = stones[j];
+          if (!b || b.isActive || !b.body || !b.shapeData) continue;
+          const pb = b.body.translation();
+          const hb = b.shapeData.halfExtents;
+          const bv = b.body.linvel ? b.body.linvel() : { x: 0, y: 0, z: 0 };
+
+          const dx = Math.abs(pa.x - pb.x);
+          const dy = Math.abs(pa.y - pb.y);
+          const dz = Math.abs(pa.z - pb.z);
+          const sx = ha.x + hb.x + 0.03;
+          const sy = ha.y + hb.y + 0.03;
+          const sz = ha.z + hb.z + 0.03;
+          const touching = dx <= sx && dy <= sy && dz <= sz;
+          if (!touching) continue;
+
+          const pairKey = `${i}_${j}`;
+          currentPairs.add(pairKey);
+
+          const rel = Math.hypot(av.x - bv.x, av.y - bv.y, av.z - bv.z);
+          const speedA = Math.hypot(av.x, av.y, av.z);
+          const speedB = Math.hypot(bv.x, bv.y, bv.z);
+          const impactScore = Math.max(rel, speedA * 0.7, speedB * 0.7);
+
+          if (!prevInactiveContactPairs.has(pairKey)) {
+            if (impactScore > bestNewImpact) bestNewImpact = impactScore;
+          }
+        }
+      }
+
+      prevInactiveContactPairs = currentPairs;
+      if (bestNewImpact < 0.02) return;
+
+      if (nowSec - lastInactiveHitSfxTs < SOUND.inactiveHitCooldownSec) return;
+      lastInactiveHitSfxTs = nowSec;
+      playInactiveStoneHitSfx(clamp(bestNewImpact / 1.2, 0.45, 1.3));
+    }
+
+    function getExternalTexture(cacheName, path, repeatX = 1, repeatY = 1) {
+      if (!THREE) return null;
+      if (!textureLoader) textureLoader = new THREE.TextureLoader();
+      if (cacheName === "stoneNormal" && texStoneNormal) return texStoneNormal;
+      if (cacheName === "stoneAlbedo" && texStoneAlbedo) return texStoneAlbedo;
+      if (cacheName === "stoneRoughness" && texStoneRoughness) return texStoneRoughness;
+      if (cacheName === "stoneAO" && texStoneAO) return texStoneAO;
+      if (cacheName === "stoneHeight" && texStoneHeight) return texStoneHeight;
+      if (cacheName === "groundNormal" && texGroundNormal) return texGroundNormal;
+      if (cacheName === "groundRoughness" && texGroundRoughness) return texGroundRoughness;
+      if (cacheName === "groundAlbedo" && texGroundAlbedo) return texGroundAlbedo;
+      if (cacheName === "groundAO" && texGroundAO) return texGroundAO;
+      if (cacheName === "groundHeight" && texGroundHeight) return texGroundHeight;
+
+      const tex = textureLoader.load(
+        path,
+        undefined,
+        undefined,
+        () => { console.warn(`[texture] failed to load: ${path}`); }
+      );
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(repeatX, repeatY);
+      tex.anisotropy = 8;
+
+      // Color textures use sRGB, normal/roughness/ao/height use linear.
+      if (cacheName === "stoneAlbedo" || cacheName === "groundAlbedo") {
+        if ("colorSpace" in tex && THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+      } else if (
+        cacheName === "stoneNormal" ||
+        cacheName === "stoneRoughness" ||
+        cacheName === "stoneAO" ||
+        cacheName === "stoneHeight" ||
+        cacheName === "groundNormal" ||
+        cacheName === "groundRoughness" ||
+        cacheName === "groundAO" ||
+        cacheName === "groundHeight"
+      ) {
+        if ("colorSpace" in tex && THREE.NoColorSpace) tex.colorSpace = THREE.NoColorSpace;
+      }
+
+      if (cacheName === "stoneNormal") texStoneNormal = tex;
+      else if (cacheName === "stoneAlbedo") texStoneAlbedo = tex;
+      else if (cacheName === "stoneRoughness") texStoneRoughness = tex;
+      else if (cacheName === "stoneAO") texStoneAO = tex;
+      else if (cacheName === "stoneHeight") texStoneHeight = tex;
+      else if (cacheName === "groundNormal") texGroundNormal = tex;
+      else if (cacheName === "groundRoughness") texGroundRoughness = tex;
+      else if (cacheName === "groundAlbedo") texGroundAlbedo = tex;
+      else if (cacheName === "groundAO") texGroundAO = tex;
+      else if (cacheName === "groundHeight") texGroundHeight = tex;
+      return tex;
     }
 
     function createRockTexture() {
@@ -526,6 +835,11 @@ Space: drop
       const group = new THREE.Group();
       const albedo = createRiverbedAlbedoTexture();
       const roughnessTex = createRiverbedRoughnessTexture();
+      const extGroundNormal = getExternalTexture("groundNormal", "tex/ground_normal.png", 14, 14);
+      const extGroundRoughness = getExternalTexture("groundRoughness", "tex/ground_roughness.png", 14, 14);
+      const extGroundAlbedo = getExternalTexture("groundAlbedo", "tex/ground_albedo.png", 14, 14);
+      const extGroundAO = getExternalTexture("groundAO", "tex/ground_ao.png", 14, 14);
+      const extGroundHeight = getExternalTexture("groundHeight", "tex/ground_height.png", 14, 14);
       const waterTex = createRiverFlowTexture();
 
       // Straight river built from connected strips.
@@ -559,22 +873,29 @@ Space: drop
 
       // Riverbanks aligned to the same ground level/material family.
       const bankGeo = new THREE.PlaneGeometry(164, 24);
+      if (bankGeo.attributes.uv && !bankGeo.attributes.uv2) {
+        bankGeo.setAttribute("uv2", new THREE.BufferAttribute(bankGeo.attributes.uv.array, 2));
+      }
       const bankMat = new THREE.MeshStandardMaterial({
-        color: 0x8f8a80,
+        color: 0xcfd2d4,
         roughness: 1.0,
         metalness: 0.0,
-        map: albedo,
-        roughnessMap: roughnessTex,
-        bumpMap: roughnessTex,
-        bumpScale: 0.03,
+        map: extGroundAlbedo || albedo,
+        roughnessMap: extGroundRoughness || roughnessTex,
+        aoMap: extGroundAO || null,
+        aoMapIntensity: 0.5,
+        normalMap: extGroundNormal || null,
+        normalScale: new THREE.Vector2(1.15, 1.15),
+        bumpMap: extGroundHeight || extGroundRoughness || roughnessTex,
+        bumpScale: 0.05,
       });
       const nearBank = new THREE.Mesh(bankGeo, bankMat);
       nearBank.rotation.x = -Math.PI / 2;
-      nearBank.position.set(0, 0.0, -12);
+      nearBank.position.set(0, -0.02, -62);
       nearBank.receiveShadow = true;
       const farBank = new THREE.Mesh(bankGeo, bankMat);
       farBank.rotation.x = -Math.PI / 2;
-      farBank.position.set(0, 0.0, -72);
+      farBank.position.set(0, -0.02, -112);
       farBank.receiveShadow = true;
       group.add(nearBank, farBank);
 
@@ -587,17 +908,15 @@ Space: drop
       const pebbleInst = new THREE.InstancedMesh(pebbleGeo, pebbleMat, 620);
       const dummy = new THREE.Object3D();
       for (let i = 0; i < 620; i += 1) {
-        const z = rand(-82, -10);
-        const depth01 = clamp((-z - 10) / 72, 0, 1); // 0=near, 1=far
-        const riverCenterX = 0;
-        const side = Math.random() < 0.5 ? -1 : 1;
-        const bankDist = rand(18, 66);
-        const x = riverCenterX + side * bankDist + rand(-6, 6);
-        // Far rocks are larger, near rocks are smaller.
-        const s = THREE.MathUtils.lerp(0.6, 5.0, depth01) * rand(0.85, 1.15);
-        dummy.position.set(x, rand(0.02, 0.52), z);
-        dummy.rotation.set(rand(-0.35, 0.35), rand(0, Math.PI * 2), rand(-0.35, 0.35));
-        dummy.scale.set(s * rand(0.95, 1.5), s * rand(0.55, 1.2), s * rand(0.95, 1.5));
+        const x = rand(-46, 46);
+        const z = rand(-95, -6);
+        const distToCenter = Math.abs(x);
+        const nearRiver = distToCenter < (18 + rand(-2, 3));
+        if (nearRiver && Math.random() < 0.65) continue;
+        const s = rand(0.7, 2.8);
+        dummy.position.set(x, rand(-0.012, 0.035), z);
+        dummy.rotation.set(rand(-0.18, 0.18), rand(0, Math.PI * 2), rand(-0.18, 0.18));
+        dummy.scale.set(s * rand(0.9, 1.4), s * rand(0.48, 1.0), s * rand(0.85, 1.25));
         dummy.updateMatrix();
         pebbleInst.setMatrixAt(i, dummy.matrix);
       }
@@ -614,7 +933,7 @@ Space: drop
       scene.fog = new THREE.Fog(0xb4d8f6, 25, 90);
 
       camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 250);
-      camera.position.set(7.2, 6.4, 8.8);
+      camera.position.set(6.2, 5.6, 7.4);
 
       renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -711,16 +1030,28 @@ Space: drop
       const groundSize = 80;
 
       const groundGeo = new THREE.PlaneGeometry(groundSize, groundSize, 1, 1);
+      if (groundGeo.attributes.uv && !groundGeo.attributes.uv2) {
+        groundGeo.setAttribute("uv2", new THREE.BufferAttribute(groundGeo.attributes.uv.array, 2));
+      }
       const albedo = createRiverbedAlbedoTexture();
       const roughnessTex = createRiverbedRoughnessTexture();
+      const extGroundNormal = getExternalTexture("groundNormal", "tex/ground_normal.png", 14, 14);
+      const extGroundRoughness = getExternalTexture("groundRoughness", "tex/ground_roughness.png", 14, 14);
+      const extGroundAlbedo = getExternalTexture("groundAlbedo", "tex/ground_albedo.png", 14, 14);
+      const extGroundAO = getExternalTexture("groundAO", "tex/ground_ao.png", 14, 14);
+      const extGroundHeight = getExternalTexture("groundHeight", "tex/ground_height.png", 14, 14);
       const groundMat = new THREE.MeshStandardMaterial({
-        color: 0x8f8a80,
+        color: 0xcfd2d4,
         roughness: 1.0,
         metalness: 0.0,
-        map: albedo,
-        roughnessMap: roughnessTex,
-        bumpMap: roughnessTex,
-        bumpScale: 0.03,
+        map: extGroundAlbedo || albedo,
+        roughnessMap: extGroundRoughness || roughnessTex,
+        aoMap: extGroundAO || null,
+        aoMapIntensity: 0.5,
+        normalMap: extGroundNormal || null,
+        normalScale: new THREE.Vector2(1.15, 1.15),
+        bumpMap: extGroundHeight || extGroundRoughness || roughnessTex,
+        bumpScale: 0.05,
       });
       groundMesh = new THREE.Mesh(groundGeo, groundMat);
       groundMesh.rotation.x = -Math.PI / 2;
@@ -788,14 +1119,32 @@ Space: drop
       };
     }
 
-    function makeStoneMesh(shapeData, color = 0xa8afb6) {
+    function makeStoneMesh(shapeData, color = 0xc9ced3) {
       const geom = shapeData.geometry.clone();
       geom.computeVertexNormals();
+      if (geom.attributes.uv && !geom.attributes.uv2) {
+        geom.setAttribute("uv2", new THREE.BufferAttribute(geom.attributes.uv.array, 2));
+      }
+
+      const stoneNormalTex = getExternalTexture("stoneNormal", "tex/stone_normal.png", 2.0, 2.0);
+      const stoneRoughnessTex = getExternalTexture("stoneRoughness", "tex/stone_roughness.png", 2.0, 2.0);
+      const stoneAoTex = getExternalTexture("stoneAO", "tex/stone_ao.png", 2.0, 2.0);
+      const stoneHeightTex = getExternalTexture("stoneHeight", "tex/stone_height.png", 2.0, 2.0);
+      const stoneAlbedoTex = getExternalTexture("stoneAlbedo", "tex/stone_albedo.png", 2.0, 2.0) || createRockTexture();
+
       const mat = new THREE.MeshStandardMaterial({
         color,
-        roughness: 0.88,
-        metalness: 0.03,
-        flatShading: true,
+        map: stoneAlbedoTex,
+        roughness: 1.0,
+        metalness: 0.02,
+        roughnessMap: stoneRoughnessTex || null,
+        aoMap: stoneAoTex || null,
+        aoMapIntensity: 0.75,
+        normalMap: stoneNormalTex || null,
+        normalScale: new THREE.Vector2(0.95, 0.95),
+        bumpMap: stoneHeightTex || null,
+        bumpScale: 0.06,
+        flatShading: false,
         side: THREE.DoubleSide,
       });
       const mesh = new THREE.Mesh(geom, mat);
@@ -828,9 +1177,6 @@ Space: drop
         shapeData.halfExtents.y,
         shapeData.halfExtents.z
       );
-      if (bodyType === "kinematic" && colDesc.setSensor) {
-        colDesc.setSensor(true);
-      }
       const collider = world.createCollider(
         colDesc
           .setFriction(TUNING.stoneFriction)
@@ -846,9 +1192,9 @@ Space: drop
       if (!stone) return;
       stone.outline.visible = !!on;
       if (on) {
-        stone.mesh.material.color.setHex(0xb5c4ce);
+        stone.mesh.material.color.setHex(0xd8dde2);
       } else {
-        stone.mesh.material.color.setHex(0xa8afb6);
+        stone.mesh.material.color.setHex(0xc9ced3);
       }
     }
 
@@ -879,7 +1225,15 @@ Space: drop
       );
       dragProbeBody.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
 
-      let probeDesc = RAPIER.ColliderDesc.convexHull(activeStone.shapeData.colliderPoints);
+      let probePoints = activeStone.shapeData.colliderPoints;
+      const shrink = TUNING.dragProbeShrink;
+      if (shrink > 0 && shrink < 1) {
+        probePoints = new Float32Array(activeStone.shapeData.colliderPoints.length);
+        for (let pi = 0; pi < probePoints.length; pi += 1) {
+          probePoints[pi] = activeStone.shapeData.colliderPoints[pi] * shrink;
+        }
+      }
+      let probeDesc = RAPIER.ColliderDesc.convexHull(probePoints);
       if (!probeDesc) {
         const h = activeStone.shapeData.halfExtents;
         probeDesc = RAPIER.ColliderDesc.cuboid(h.x, h.y, h.z);
@@ -895,6 +1249,32 @@ Space: drop
       }
       dragProbeBody = null;
       dragProbeCollider = null;
+    }
+
+    function setStabilityBar(score) {
+      const s = clamp(score, 0, 1);
+      const pct = Math.round(s * 100);
+      stabilityFillEl.style.width = `${pct}%`;
+      stabilityValueEl.textContent = `${pct}%`;
+    }
+
+    function updateStabilityBar() {
+      if (!stabilityTargetStone || !stabilityTargetStone.body || gameOver) {
+        stabilityWrapEl.classList.remove("on");
+        return;
+      }
+
+      const lv = stabilityTargetStone.body.linvel ? stabilityTargetStone.body.linvel() : { x: 0, y: 0, z: 0 };
+      const av = stabilityTargetStone.body.angvel ? stabilityTargetStone.body.angvel() : { x: 0, y: 0, z: 0 };
+      const lin = Math.hypot(lv.x, lv.y, lv.z);
+      const ang = Math.hypot(av.x, av.y, av.z);
+
+      const linScore = Math.max(0, 1 - lin / 0.85);
+      const angScore = Math.max(0, 1 - ang / 2.2);
+      const score = linScore * 0.65 + angScore * 0.35;
+
+      stabilityWrapEl.classList.add("on");
+      setStabilityBar(score);
     }
 
     function canMoveActiveTo(targetPos) {
@@ -957,6 +1337,8 @@ Space: drop
       stone.gentleDuration = rand(TUNING.gentleDurationMin, TUNING.gentleDurationMax);
       stone.body.setGravityScale(TUNING.gentleGravityScale, true);
       stone.body.wakeUp();
+      stone.hitSfxArmed = true;
+      stone.hitSfxAge = 0;
       dynamicStones.push(stone);
     }
 
@@ -1000,6 +1382,7 @@ Space: drop
 
     function beginGrab(clientX, clientY, mode) {
       if (!activeStone || isGrabbing) return;
+      ensureAudio();
 
       const rect = renderer.domElement.getBoundingClientRect();
       pointerNdc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
@@ -1046,7 +1429,7 @@ Space: drop
       let lo = 0;
       let hi = 1;
 
-      for (let i = 0; i < 14; i += 1) {
+      for (let i = 0; i < 20; i += 1) {
         const mid = (lo + hi) * 0.5;
         probe.lerpVectors(start, target, mid);
         if (canMoveActiveTo(probe)) {
@@ -1138,6 +1521,10 @@ Space: drop
       lastReleasedPos = released.mesh.position.clone();
 
       switchStoneBodyToDynamic(released);
+      playGameSound("place", 1);
+      stabilityTargetStone = released;
+      stabilityWrapEl.classList.add("on");
+      setStabilityBar(0);
       activeStone = null;
 
       stackCount += 1;
@@ -1219,6 +1606,51 @@ Space: drop
           }
         }
 
+
+        // Play hit sfx after release when this now-dynamic stone touches another stone.
+        stone.hitSfxAge = (stone.hitSfxAge || 0) + delta;
+        if (stone.hitSfxArmed && stone.hitSfxAge > 0.03) {
+          let hitOtherStone = false;
+          if (typeof world.intersectionsWithCollider === "function" && stone.collider) {
+            world.intersectionsWithCollider(stone.collider, (other) => {
+              if (!other) return true;
+              if (groundCollider && other.handle === groundCollider.handle) return true;
+              for (let si = 0; si < stones.length; si += 1) {
+                const s2 = stones[si];
+                if (!s2 || s2 === stone || !s2.collider) continue;
+                if (s2.collider.handle === other.handle) {
+                  hitOtherStone = true;
+                  return false;
+                }
+              }
+              return true;
+            });
+          } else {
+            // Fallback approximate check if query API is unavailable.
+            const p = stone.body.translation();
+            const h = stone.shapeData ? stone.shapeData.halfExtents : { x: 0.1, y: 0.1, z: 0.1 };
+            for (let si = 0; si < stones.length; si += 1) {
+              const s2 = stones[si];
+              if (!s2 || s2 === stone || !s2.body || !s2.shapeData) continue;
+              const p2 = s2.body.translation();
+              const h2 = s2.shapeData.halfExtents;
+              const dx = Math.abs(p.x - p2.x);
+              const dy = Math.abs(p.y - p2.y);
+              const dz = Math.abs(p.z - p2.z);
+              if (dx < (h.x + h2.x) && dy < (h.y + h2.y) && dz < (h.z + h2.z)) {
+                hitOtherStone = true;
+                break;
+              }
+            }
+          }
+          if (hitOtherStone) {
+            const lv2 = stone.body.linvel ? stone.body.linvel() : { x: 0, y: 0, z: 0 };
+            const impact = Math.hypot(lv2.x, lv2.y, lv2.z);
+            playActiveStoneHitSfx(clamp(impact / 1.2, 0.5, 1.25));
+            stone.hitSfxArmed = false;
+          }
+        }
+
         if (ratio >= 1) {
           stone.body.setGravityScale(1.0, true);
           dynamicStones.splice(i, 1);
@@ -1248,6 +1680,7 @@ Space: drop
       // Rule: game over when two or more non-active stones touch the ground.
       // Vertex-based world-space check avoids missing contacts due to physics query timing.
       const eps = 0.06;
+      const nowSec = performance.now() / 1000;
       let groundedCount = 0;
 
       for (let i = 0; i < stones.length; i += 1) {
@@ -1271,19 +1704,18 @@ Space: drop
         }
 
         const grounded = minY <= eps;
-        if (grounded) {
-          s.mesh.material.color.setHex(s.isActive ? 0xb5c4ce : 0xa8afb6);
-          if (!s.isActive) {
-            groundedCount += 1;
-            if (groundedCount >= 2) {
-              triggerGameOver();
-              return;
-            }
+        if (grounded && !s.isActive) {
+          groundedCount += 1;
+          if (groundedCount >= 2) {
+            triggerGameOver();
+            return;
           }
-        } else if (s.isActive) {
-          s.mesh.material.color.setHex(0xb5c4ce);
+        }
+
+        if (s.isActive) {
+          s.mesh.material.color.setHex(0xd8dde2);
         } else {
-          s.mesh.material.color.setHex(0xa8afb6);
+          s.mesh.material.color.setHex(0xc9ced3);
         }
       }
     }
@@ -1337,6 +1769,7 @@ Space: drop
 
     function onKeyDown(e) {
       if (!gameStarted) return;
+      ensureAudio();
       if (gameOver && e.code !== "Digit1" && e.code !== "Digit2") return;
       if (e.code === "Digit1") setViewTop();
       if (e.code === "Digit2") setViewSide();
@@ -1374,7 +1807,14 @@ Space: drop
       stackCount = 0;
       spawnedStoneCount = 0;
       lastReleasedPos = null;
+      stabilityTargetStone = null;
+      stabilityWrapEl.classList.remove("on");
+      stabilityValueEl.textContent = "--";
+      stabilityFillEl.style.width = "0%";
       gameOver = false;
+      lastInactiveHitSfxTs = 0;
+      prevInactiveContactPairs = new Set();
+      lastActiveHitSfxTs = 0;
       gameOverOverlayEl.classList.remove("on");
       stackHeightEl.textContent = "0.00 m";
       updateHudStats();
@@ -1384,8 +1824,25 @@ Space: drop
       }
     }
 
+    function resetCameraToStart() {
+      viewTween = null;
+      controls.target.set(0, 1.0, 0);
+      camera.position.set(6.2, 5.6, 7.4);
+      controls.enabled = true;
+      controls.update();
+    }
+
     function onBeginStacking() {
       if (gameStarted) return;
+      ensureAudio();
+      const hitList = SOUND.files.inactiveHits || [];
+      for (let hi = 0; hi < hitList.length; hi += 1) {
+        const key = `inactive_${hi}`;
+        if (!audioFiles[key]) {
+          audioFiles[key] = new Audio(hitList[hi]);
+          audioFiles[key].preload = "auto";
+        }
+      }
       gameStarted = true;
       startOverlayEl.classList.add("hide");
       resetPlayfield(true);
@@ -1397,9 +1854,10 @@ Space: drop
     }
 
     function onStackAgain() {
-      resetPlayfield(false);
-      gameStarted = false;
-      startOverlayEl.classList.remove("hide");
+      gameStarted = true;
+      startOverlayEl.classList.add("hide");
+      resetPlayfield(true);
+      resetCameraToStart();
     }
 
     function onResize() {
@@ -1443,6 +1901,8 @@ Space: drop
 
       syncMeshesFromPhysics();
       checkGameOverByGroundContact();
+      detectInactiveStoneCollisionSfx();
+      updateStabilityBar();
       updateHudStats();
 
       if (!isGrabbing) {
@@ -1467,6 +1927,9 @@ Space: drop
   </script>
 </body>
 </html>
+
+
+
 
 
 
