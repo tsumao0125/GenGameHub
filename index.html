@@ -35,53 +35,6 @@
       bottom: 0;
     }
 
-    .wrap { width:min(1120px, 92vw); margin:0 auto; }
-
-    header{
-      position: sticky;
-      top:0;
-      z-index: 20;
-      backdrop-filter: blur(10px);
-      background: rgba(7,11,24,.45);
-      border-bottom: 1px solid rgba(35,50,90,.55);
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Noto Sans JP", monospace;
-    }
-
-    .nav{
-      display:flex; align-items:center; justify-content:space-between;
-      padding: 12px 0;
-      gap: 12px;
-    }
-
-    .brand{
-      display:flex; align-items:center; gap:10px;
-      font-weight:900;
-      letter-spacing:.4px;
-      text-decoration:none;
-      color:var(--ink);
-    }
-
-    .badge{
-      width:12px; height:12px; border-radius:4px;
-      background: linear-gradient(180deg, var(--accent), var(--accent2));
-      box-shadow: var(--glow);
-    }
-
-    .nav a{ color:var(--muted); font-weight:700; text-decoration:none; }
-    .navlinks{ display:flex; gap:12px; }
-
-    .navlinks a{
-      padding:8px 10px;
-      border-radius: 12px;
-      border: 1px solid transparent;
-    }
-
-    .navlinks a:hover{
-      color:var(--ink);
-      border-color: rgba(35,50,90,.6);
-      background: rgba(11,20,48,.30);
-    }
-
     #hudTopLeft {
       position: absolute;
       top: 12px;
@@ -256,17 +209,7 @@
   </style>
 </head>
 <body>
-  <header>
-    <div class="wrap">
-      <div class="nav">
-        <a class="brand" href="../index.html#top"><span class="badge" aria-hidden="true"></span>GenGame Hub</a>
-        <div class="navlinks" aria-label="Primary">
-          <a href="../index.html#games">Games</a>
-          <a href="../index.html#about">About</a>
-        </div>
-      </div>
-    </div>
-  </header>
+  <div data-site-header></div>
   <div id="app">
     <div id="hudTopLeft">
       <span class="label">stackCount</span>: <span id="stackCount">0</span>
@@ -340,6 +283,12 @@ Space: drop
       wind: 0,
       wave: 0,
     };
+    const STAGE = {
+      radius: 34,
+      thickness: 0.1,
+      inset: 1.2,
+    };
+
 
     const SOUND = {
       enabled: true,
@@ -422,6 +371,11 @@ Space: drop
     let texGroundAlbedo = null;
     let texGroundAO = null;
     let texGroundHeight = null;
+    let texRiverNormal = null;
+    let texRiverRoughness = null;
+    let texRiverAlbedo = null;
+    let texRiverAO = null;
+    let texRiverHeight = null;
 
     function rand(min, max) {
       return min + Math.random() * (max - min);
@@ -618,6 +572,11 @@ Space: drop
       if (cacheName === "groundAlbedo" && texGroundAlbedo) return texGroundAlbedo;
       if (cacheName === "groundAO" && texGroundAO) return texGroundAO;
       if (cacheName === "groundHeight" && texGroundHeight) return texGroundHeight;
+      if (cacheName === "riverNormal" && texRiverNormal) return texRiverNormal;
+      if (cacheName === "riverRoughness" && texRiverRoughness) return texRiverRoughness;
+      if (cacheName === "riverAlbedo" && texRiverAlbedo) return texRiverAlbedo;
+      if (cacheName === "riverAO" && texRiverAO) return texRiverAO;
+      if (cacheName === "riverHeight" && texRiverHeight) return texRiverHeight;
 
       const tex = textureLoader.load(
         path,
@@ -631,7 +590,7 @@ Space: drop
       tex.anisotropy = 8;
 
       // Color textures use sRGB, normal/roughness/ao/height use linear.
-      if (cacheName === "stoneAlbedo" || cacheName === "groundAlbedo") {
+      if (cacheName === "stoneAlbedo" || cacheName === "groundAlbedo" || cacheName === "riverAlbedo") {
         if ("colorSpace" in tex && THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
       } else if (
         cacheName === "stoneNormal" ||
@@ -641,7 +600,11 @@ Space: drop
         cacheName === "groundNormal" ||
         cacheName === "groundRoughness" ||
         cacheName === "groundAO" ||
-        cacheName === "groundHeight"
+        cacheName === "groundHeight" ||
+        cacheName === "riverNormal" ||
+        cacheName === "riverRoughness" ||
+        cacheName === "riverAO" ||
+        cacheName === "riverHeight"
       ) {
         if ("colorSpace" in tex && THREE.NoColorSpace) tex.colorSpace = THREE.NoColorSpace;
       }
@@ -656,6 +619,11 @@ Space: drop
       else if (cacheName === "groundAlbedo") texGroundAlbedo = tex;
       else if (cacheName === "groundAO") texGroundAO = tex;
       else if (cacheName === "groundHeight") texGroundHeight = tex;
+      else if (cacheName === "riverNormal") texRiverNormal = tex;
+      else if (cacheName === "riverRoughness") texRiverRoughness = tex;
+      else if (cacheName === "riverAlbedo") texRiverAlbedo = tex;
+      else if (cacheName === "riverAO") texRiverAO = tex;
+      else if (cacheName === "riverHeight") texRiverHeight = tex;
       return tex;
     }
 
@@ -802,7 +770,7 @@ Space: drop
       const dome = new THREE.Mesh(domeGeo, domeMat);
       scene.add(dome);
       scene.background = skyTex;
-      scene.fog = new THREE.Fog(0xb2d2ee, 28, 120);
+      scene.fog = new THREE.Fog(0xb2d2ee, 20, 72);
     }
 
     function createRiverbedPebbles() {
@@ -818,8 +786,10 @@ Space: drop
       inst.receiveShadow = true;
       const dummy = new THREE.Object3D();
       for (let i = 0; i < count; i += 1) {
-        const x = rand(-35, 35);
-        const z = rand(-35, 35);
+        const theta = Math.random() * Math.PI * 2;
+        const r = Math.sqrt(Math.random()) * (STAGE.radius - STAGE.inset);
+        const x = Math.cos(theta) * r;
+        const z = Math.sin(theta) * r;
         const s = rand(0.5, 2.2);
         dummy.position.set(x, rand(-0.03, 0.03), z);
         dummy.rotation.set(rand(-0.25, 0.25), rand(0, Math.PI * 2), rand(-0.25, 0.25));
@@ -833,71 +803,56 @@ Space: drop
 
     function createRiverBackdrop() {
       const group = new THREE.Group();
-      const albedo = createRiverbedAlbedoTexture();
-      const roughnessTex = createRiverbedRoughnessTexture();
-      const extGroundNormal = getExternalTexture("groundNormal", "tex/ground_normal.png", 14, 14);
-      const extGroundRoughness = getExternalTexture("groundRoughness", "tex/ground_roughness.png", 14, 14);
-      const extGroundAlbedo = getExternalTexture("groundAlbedo", "tex/ground_albedo.png", 14, 14);
-      const extGroundAO = getExternalTexture("groundAO", "tex/ground_ao.png", 14, 14);
-      const extGroundHeight = getExternalTexture("groundHeight", "tex/ground_height.png", 14, 14);
       const waterTex = createRiverFlowTexture();
+      const riverAlbedoTex = getExternalTexture("riverAlbedo", "tex/riverwater_albedo.png", 2.8, 1.2);
+      const riverNormalTex = getExternalTexture("riverNormal", "tex/riverwater_normal.png", 2.8, 1.2);
+      const riverRoughnessTex = getExternalTexture("riverRoughness", "tex/riverwater_roughness.png", 2.8, 1.2);
+      const riverAoTex = getExternalTexture("riverAO", "tex/riverwater_ao.png", 2.8, 1.2);
+      const riverHeightTex = getExternalTexture("riverHeight", "tex/riverwater_height.png", 2.8, 1.2);
+      const riverTextures = [riverAlbedoTex, riverNormalTex, riverRoughnessTex, riverAoTex, riverHeightTex];
+      for (let i = 0; i < riverTextures.length; i += 1) {
+        const tex = riverTextures[i];
+        if (!tex) continue;
+        tex.center.set(0.5, 0.5);
+        tex.rotation = Math.PI / 2;
+      }
 
-      // Straight river built from connected strips.
+
       const riverMat = new THREE.MeshStandardMaterial({
-        color: 0x88aec8,
-        roughness: 0.3,
-        metalness: 0.04,
+        color: 0xd6ecff,
+        roughness: 0.18,
+        metalness: 0.03,
         transparent: true,
-        opacity: 0.9,
-        map: waterTex,
+        opacity: 0.92,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -2,
+        map: riverAlbedoTex || waterTex,
+        roughnessMap: riverRoughnessTex || null,
+        aoMap: riverAoTex || null,
+        aoMapIntensity: 0.65,
+        normalMap: riverNormalTex || null,
+        normalScale: new THREE.Vector2(1.1, 1.1),
+        bumpMap: riverHeightTex || null,
+        bumpScale: 0.1,
       });
       riverFlowMaterials.push(riverMat);
-      const segments = 12;
-      for (let i = 0; i < segments; i += 1) {
-        const t = i / (segments - 1);
-        const z = -18 - t * 66;
-        const x = 0;
-        const width = 34 + 6 * t;
-        const nextT = (i + 1) / (segments - 1);
-        const nextZ = -18 - nextT * 66;
-        const nextX = 0;
-        const yaw = Math.atan2(nextX - x, nextZ - z);
 
-        const riverSeg = new THREE.Mesh(new THREE.PlaneGeometry(width, 8.5), riverMat);
-        riverSeg.rotation.x = -Math.PI / 2;
-        riverSeg.rotation.z = -yaw;
-        riverSeg.position.set(x, -0.03, z);
-        riverSeg.receiveShadow = true;
-        group.add(riverSeg);
+      // Horizontal river band near the upper side of the circular stage.
+      const riverCenterZ = -10.5;
+      const riverBandDepth = 7.8;
+      const riverHalfDepth = riverBandDepth * 0.5;
+      const riverSpanHalf = Math.sqrt(Math.max(0, STAGE.radius * STAGE.radius - riverCenterZ * riverCenterZ)) - 0.2;
+      const riverWidth = Math.max(8, riverSpanHalf * 2);
+      const riverGeo = new THREE.PlaneGeometry(riverWidth, riverBandDepth, 24, 6);
+      if (riverGeo.attributes.uv && !riverGeo.attributes.uv2) {
+        riverGeo.setAttribute("uv2", new THREE.BufferAttribute(riverGeo.attributes.uv.array, 2));
       }
-
-      // Riverbanks aligned to the same ground level/material family.
-      const bankGeo = new THREE.PlaneGeometry(164, 24);
-      if (bankGeo.attributes.uv && !bankGeo.attributes.uv2) {
-        bankGeo.setAttribute("uv2", new THREE.BufferAttribute(bankGeo.attributes.uv.array, 2));
-      }
-      const bankMat = new THREE.MeshStandardMaterial({
-        color: 0xcfd2d4,
-        roughness: 1.0,
-        metalness: 0.0,
-        map: extGroundAlbedo || albedo,
-        roughnessMap: extGroundRoughness || roughnessTex,
-        aoMap: extGroundAO || null,
-        aoMapIntensity: 0.5,
-        normalMap: extGroundNormal || null,
-        normalScale: new THREE.Vector2(1.15, 1.15),
-        bumpMap: extGroundHeight || extGroundRoughness || roughnessTex,
-        bumpScale: 0.05,
-      });
-      const nearBank = new THREE.Mesh(bankGeo, bankMat);
-      nearBank.rotation.x = -Math.PI / 2;
-      nearBank.position.set(0, -0.02, -62);
-      nearBank.receiveShadow = true;
-      const farBank = new THREE.Mesh(bankGeo, bankMat);
-      farBank.rotation.x = -Math.PI / 2;
-      farBank.position.set(0, -0.02, -112);
-      farBank.receiveShadow = true;
-      group.add(nearBank, farBank);
+      const riverSeg = new THREE.Mesh(riverGeo, riverMat);
+      riverSeg.rotation.x = -Math.PI / 2;
+      riverSeg.position.set(0, 0.012, riverCenterZ);
+      riverSeg.receiveShadow = true;
+      group.add(riverSeg);
 
       const pebbleGeo = new THREE.DodecahedronGeometry(0.44, 0);
       const pebbleMat = new THREE.MeshStandardMaterial({
@@ -908,11 +863,13 @@ Space: drop
       const pebbleInst = new THREE.InstancedMesh(pebbleGeo, pebbleMat, 620);
       const dummy = new THREE.Object3D();
       for (let i = 0; i < 620; i += 1) {
-        const x = rand(-46, 46);
-        const z = rand(-95, -6);
-        const distToCenter = Math.abs(x);
-        const nearRiver = distToCenter < (18 + rand(-2, 3));
-        if (nearRiver && Math.random() < 0.65) continue;
+        const theta = Math.random() * Math.PI * 2;
+        const r = rand(STAGE.radius * 0.22, STAGE.radius - STAGE.inset);
+        const x = Math.cos(theta) * r;
+        const z = Math.sin(theta) * r;
+        const insideRiverX = Math.abs(x) < (riverWidth * 0.5 + 0.8);
+        const insideRiverZ = Math.abs(z - riverCenterZ) < (riverHalfDepth + 1.0);
+        if (insideRiverX && insideRiverZ && Math.random() < 0.9) continue;
         const s = rand(0.7, 2.8);
         dummy.position.set(x, rand(-0.012, 0.035), z);
         dummy.rotation.set(rand(-0.18, 0.18), rand(0, Math.PI * 2), rand(-0.18, 0.18));
@@ -930,7 +887,7 @@ Space: drop
     function initThree() {
       scene = new THREE.Scene();
       scene.background = new THREE.Color(0xb4d8f6);
-      scene.fog = new THREE.Fog(0xb4d8f6, 25, 90);
+      scene.fog = new THREE.Fog(0xb4d8f6, 18, 68);
 
       camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 250);
       camera.position.set(6.2, 5.6, 7.4);
@@ -1027,9 +984,10 @@ Space: drop
     }
 
     function createGround() {
-      const groundSize = 80;
+      const groundRadius = STAGE.radius;
+      const groundThickness = STAGE.thickness;
 
-      const groundGeo = new THREE.PlaneGeometry(groundSize, groundSize, 1, 1);
+      const groundGeo = new THREE.CircleGeometry(groundRadius, 96);
       if (groundGeo.attributes.uv && !groundGeo.attributes.uv2) {
         groundGeo.setAttribute("uv2", new THREE.BufferAttribute(groundGeo.attributes.uv.array, 2));
       }
@@ -1062,10 +1020,10 @@ Space: drop
       createRiverBackdrop();
       createSkyDome();
 
-      const rbDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(0, -0.1, 0);
+      const rbDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(0, -groundThickness, 0);
       groundBody = world.createRigidBody(rbDesc);
 
-      const colDesc = RAPIER.ColliderDesc.cuboid(groundSize / 2, 0.1, groundSize / 2)
+      const colDesc = RAPIER.ColliderDesc.cylinder(groundThickness, groundRadius)
         .setFriction(TUNING.groundFriction)
         .setRestitution(TUNING.groundRestitution);
       groundCollider = world.createCollider(colDesc, groundBody);
@@ -1925,8 +1883,16 @@ Space: drop
       showFatal(String(err && err.message ? err.message : err));
     });
   </script>
+  <script src="../scripts/site-header.js"></script>
 </body>
 </html>
+
+
+
+
+
+
+
 
 
 
