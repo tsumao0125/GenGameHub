@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Arcade Racer</title>
+  <link rel="icon" type="image/png" href="../img/favicon.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div data-site-header></div>
+  <div class="hud-shell">
+    <canvas id="renderCanvas" aria-label="3D Arcade Racer"></canvas>
+
+    <div id="startOverlay" class="start-overlay">
+      <div class="start-card">
+        <p class="start-title">3D Arcade Racer</p>
+        <div class="lap-picker">
+          <label class="lap-option">
+            <input type="radio" name="lapCount" value="1">
+            <span>1 Lap</span>
+          </label>
+          <label class="lap-option">
+            <input type="radio" name="lapCount" value="3" checked>
+            <span>3 Laps</span>
+          </label>
+        </div>
+        <div class="ghost-load">
+          <input id="ghostIdInput" class="ghost-input" type="text" maxlength="12" placeholder="Ghost ID">
+          <button id="loadGhostButton" class="ghost-button" type="button">Load Ghost</button>
+        </div>
+        <p id="loadGhostStatus" class="ghost-status"></p>
+        <p id="activeGhostLabel" class="active-ghost hidden"></p>
+        <div id="mobileTiltPrompt" class="mobile-tilt hidden">
+          <p id="tiltStatus" class="ghost-status">Tilt steering is available on mobile.</p>
+          <button id="enableTiltButton" class="ghost-button" type="button">Enable Tilt</button>
+        </div>
+        <button id="startButton" class="start-button" type="button">Start</button>
+      </div>
+    </div>
+
+    <div class="hud top-left">
+      <div class="panel">
+        <span class="label">Lap</span>
+        <strong id="lapValue">Lap 1 / 3</strong>
+      </div>
+      <div class="panel">
+        <span class="label">Time</span>
+        <strong id="timeValue">00:00.000</strong>
+      </div>
+      <div id="speedPanel" class="panel">
+        <span class="label">Speed</span>
+        <strong id="speedValue">0 km/h</strong>
+      </div>
+      <div class="panel section-panel">
+        <button id="sectionToggle" class="section-toggle" type="button">Sections</button>
+        <div id="sectionTimes" class="section-times"></div>
+      </div>
+    </div>
+
+    <div class="hud center">
+      <div id="wrongWayValue" class="wrong-way hidden">WRONG WAY</div>
+      <div id="pauseValue" class="pause hidden">PAUSED</div>
+    </div>
+
+    <div class="mini-map">
+      <div class="panel mini-map-panel">
+        <span class="label">Course Map</span>
+        <canvas id="miniMapCanvas" width="220" height="220" aria-label="Course minimap"></canvas>
+      </div>
+    </div>
+
+    <div id="resultPanel" class="result hidden">
+      <p id="finishPlace" class="finish-place">1st</p>
+      <p id="finishTime" class="finish-line">Total 00:00.000</p>
+      <div id="lapTimes" class="lap-times"></div>
+      <div class="share-panel">
+        <div class="share-actions">
+          <button id="saveGhostButton" class="ghost-button" type="button">Save Ghost</button>
+        </div>
+        <p id="saveGhostStatus" class="ghost-status"></p>
+        <div id="sharedGhostWrap" class="shared-ghost-wrap hidden">
+          <p id="sharedGhostId" class="shared-ghost-id"></p>
+          <button id="copyGhostButton" class="copy-icon-button" type="button" aria-label="Copy ghost ID" title="Copy ghost ID">
+            <span class="copy-icon">
+              <span></span>
+              <span></span>
+            </span>
+          </button>
+        </div>
+      </div>
+      <p class="restart-hint">Press R to Restart</p>
+    </div>
+
+    <div class="controls">
+      <span>W / ↑ Accel</span>
+      <span>S / ↓ Brake</span>
+      <span>A D / ← → Steer</span>
+      <span>Esc Pause</span>
+      <span>R Restart</span>
+    </div>
+    <div id="mobileControls" class="mobile-controls hidden">
+      <button id="brakeButton" class="touch-drive brake-drive" type="button">Brake</button>
+      <button id="accelButton" class="touch-drive accel-drive" type="button">Accel</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.babylonjs.com/babylon.js"></script>
+  <script src="../scripts/site-header.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
