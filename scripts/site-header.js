@@ -67,21 +67,32 @@
       }
       @media (max-width: 700px){
         .site-header__inner{
-          padding: 10px 0;
-          flex-wrap: wrap;
+          padding: 4px 0;
+          flex-wrap: nowrap;
+          gap: 8px;
+          font-size: 12px;
+          line-height: 1.4;
         }
         .site-header__brand{
-          width: 100%;
+          gap: 6px;
+          letter-spacing: 0;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+        .site-header__badge{
+          width: 8px;
+          height: 8px;
+          border-radius: 3px;
         }
         .site-header__nav{
-          width: 100%;
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 8px;
+          display: flex;
+          gap: 2px;
+          flex-shrink: 0;
         }
         .site-header__nav a{
           text-align: center;
-          padding: 10px 8px;
+          padding: 6px;
+          white-space: nowrap;
         }
       }
     `;
