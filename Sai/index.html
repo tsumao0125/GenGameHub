@@ -1,0 +1,457 @@
+﻿<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="icon" type="image/png" href="../img/favicon.png" />
+  <title>Sai v1</title>
+  <style>
+    :root {
+      --hud-bg: rgba(0, 0, 0, 0.58);
+      --hud-fg: #f1f4f6;
+      --hud-accent: #9bd0ff;
+      --ink:#f7edf2;
+      --muted:#d7b4c3;
+      --accent:#7df9ff;
+      --accent2:#b07cff;
+      --glow: 0 0 24px rgba(125,249,255,.18);
+      --header-h: 56px;
+    }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: "Segoe UI", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+      background: #8ea6b6;
+      color: var(--hud-fg);
+    }
+
+    #app {
+      position: absolute;
+      top: var(--header-h);
+      left: 0;
+      right: 0;
+      bottom: 0;
+    }
+
+    #hudTopLeft {
+      position: absolute;
+      top: calc(var(--header-h) + 120px);
+      left: 12px;
+      z-index: 10;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: var(--hud-bg);
+      backdrop-filter: blur(2px);
+      font-size: 13px;
+      line-height: 1.4;
+      user-select: none;
+    }
+
+    #giveUpBtn {
+      margin-top: 8px;
+      width: 100%;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.12);
+      color: var(--hud-fg);
+      font-size: 12px;
+      padding: 6px 8px;
+      cursor: pointer;
+    }
+
+    #giveUpBtn:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    #stabilityWrap {
+      position: fixed;
+      top: calc(var(--header-h) + 120px);
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 12;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: var(--hud-bg);
+      backdrop-filter: blur(2px);
+      display: none;
+      pointer-events: none;
+      min-width: 450px;
+    }
+
+    #stabilityWrap.on {
+      display: block;
+    }
+
+    #stabilityMeter {
+      margin-top: 4px;
+      width: 420px;
+      height: 8px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.18);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+    }
+
+    #stabilityFill {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #ff7a7a, #ffd86e 55%, #9de3a1);
+      transition: width 80ms linear;
+    }
+
+    #stabilityValue {
+      margin-left: 6px;
+      font-variant-numeric: tabular-nums;
+      color: #dff5ff;
+    }
+
+    #hudBottomRight {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      z-index: 10;
+      width: min(340px, calc(100vw - 24px));
+      border-radius: 8px;
+      background: var(--hud-bg);
+      backdrop-filter: blur(2px);
+      font-size: 13px;
+      line-height: 1.5;
+      user-select: none;
+      overflow: hidden;
+    }
+
+    #hudBottomRightInner {
+      padding: 10px 12px;
+    }
+
+    .hud-controls-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 6px;
+    }
+
+    .hud-controls-title {
+      color: var(--hud-accent);
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .hud-controls-tab {
+      display: none;
+      width: 100%;
+      align-items: center;
+      justify-content: space-between;
+      border: 0;
+      border-radius: 0;
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--hud-fg);
+      font-size: 13px;
+      font-weight: 700;
+      padding: 10px 14px;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .hud-controls-tab::after {
+      content: "▾";
+      font-size: 12px;
+      opacity: 0.9;
+      transition: transform 0.18s ease;
+    }
+
+    #hudBottomRight:not(.is-collapsed) .hud-controls-tab::after {
+      transform: rotate(180deg);
+    }
+
+    .hud-lang-btn {
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.12);
+      color: var(--hud-fg);
+      font-size: 11px;
+      padding: 4px 8px;
+      cursor: pointer;
+    }
+
+    .hud-lang-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .hud-controls-divider {
+      height: 1px;
+      margin: 8px 0;
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .hud-controls-section-title {
+      color: #dff5ff;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .hud-controls-line {
+      margin: 2px 0;
+    }
+
+    #gameOverOverlay {
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      background: rgba(0, 0, 0, 0.15);
+      color: #ffd8d8;
+      font-size: 48px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    }
+
+    #gameOverOverlay.on {
+      display: flex;
+    }
+
+    #gameOverContent {
+      width: min(540px, calc(100vw - 32px));
+      padding: 20px 18px 18px;
+      border-radius: 14px;
+      background: rgba(8, 13, 18, 0.72);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.32);
+      text-align: center;
+      pointer-events: auto;
+    }
+
+    .game-over-title {
+      margin-bottom: 14px;
+    }
+
+    .game-over-panel {
+      margin: 0 auto 14px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.08);
+      text-align: left;
+    }
+
+    .game-over-heading {
+      margin-bottom: 8px;
+      color: #dff5ff;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .game-over-current-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 14px;
+      color: #f1f4f6;
+    }
+
+    .game-over-current-row + .game-over-current-row {
+      margin-top: 6px;
+    }
+
+    .game-over-ranking {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      font-size: 14px;
+      color: #f1f4f6;
+    }
+
+    .game-over-ranking li {
+      display: grid;
+      grid-template-columns: 52px 1fr 1fr;
+      gap: 10px;
+      padding: 5px 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .game-over-ranking li:first-child {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .game-over-empty {
+      font-size: 14px;
+      color: rgba(241, 244, 246, 0.8);
+    }
+
+    #stackAgainBtn {
+      margin-top: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.42);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.16);
+      color: #fff;
+      font-size: 16px;
+      font-weight: 700;
+      padding: 10px 16px;
+      cursor: pointer;
+    }
+
+    #startOverlay {
+      position: absolute;
+      inset: 0;
+      z-index: 30;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      background: linear-gradient(180deg, rgba(174, 208, 235, 0.92), rgba(108, 132, 149, 0.78));
+      backdrop-filter: blur(3px);
+    }
+
+    #startLogo {
+      width: min(440px, 72vw);
+      opacity: 0;
+      filter: drop-shadow(0 18px 26px rgba(0, 0, 0, 0.2));
+      animation: logoFadeIn 1.8s ease forwards;
+    }
+
+    #startOverlay.hide {
+      display: none;
+      pointer-events: none;
+    }
+
+    #beginBtn {
+      border: 1px solid rgba(255, 255, 255, 0.58);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.18);
+      color: #ffffff;
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      padding: 14px 28px;
+      cursor: pointer;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
+    }
+
+    #beginBtn:hover {
+      background: rgba(255, 255, 255, 0.26);
+    }
+
+    @media (pointer: coarse), (max-width: 900px) {
+      #hudBottomRight {
+        left: 12px;
+        right: 12px;
+        bottom: 12px;
+        width: auto;
+      }
+
+      .hud-controls-tab {
+        display: flex;
+      }
+
+      #hudBottomRight.is-collapsed #hudBottomRightInner {
+        display: none;
+      }
+
+      #stabilityWrap {
+        min-width: min(92vw, 450px);
+      }
+
+      #stabilityMeter {
+        width: min(82vw, 420px);
+      }
+    }
+
+    @keyframes logoFadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .label {
+      color: var(--hud-accent);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div data-site-header></div>
+  <div id="app">
+    <div id="hudTopLeft">
+      <span class="label" id="stackCountLabel">stackCount</span>: <span id="stackCount">0</span>
+      <br />
+      <span class="label" id="heightLabel">height</span>: <span id="stackHeight">0.00 m</span>
+      <button id="giveUpBtn" type="button">Give Up</button>
+    </div>
+    <div id="stabilityWrap">
+      <span class="label" id="stabilityLabel">stability</span>: <span id="stabilityValue">--</span>
+      <div id="stabilityMeter"><div id="stabilityFill"></div></div>
+    </div>
+    <div id="hudBottomRight" class="is-collapsed">
+      <button id="hudToggleBtn" class="hud-controls-tab" type="button">Controls</button>
+      <div id="hudBottomRightInner">
+        <div class="hud-controls-head">
+          <div class="hud-controls-title" id="controlsTitle">Controls</div>
+          <button id="langToggleBtn" class="hud-lang-btn" type="button">日本語</button>
+        </div>
+        <div class="hud-controls-divider"></div>
+        <div class="hud-controls-section-title" id="controlsEmptyTitle">Empty Space</div>
+        <div class="hud-controls-line" id="controlsEmptyPan">LMB Drag -- Pan Camera</div>
+        <div class="hud-controls-line" id="controlsEmptyRotate">MMB Drag -- Rotate Camera</div>
+        <div class="hud-controls-divider"></div>
+        <div class="hud-controls-section-title" id="controlsStoneTitle">Active Stone</div>
+        <div class="hud-controls-line" id="controlsStoneMove">LMB Drag -- Move Stone</div>
+        <div class="hud-controls-line" id="controlsStoneRotate">Shift + LMB Drag -- Rotate Stone</div>
+        <div class="hud-controls-divider"></div>
+        <div class="hud-controls-section-title" id="controlsTouchTitle">Mobile</div>
+        <div class="hud-controls-line" id="controlsTouchPan">Drag on empty space -- Pan Camera</div>
+        <div class="hud-controls-line" id="controlsTouchRotate">Long Press + Drag on empty space -- Rotate Camera</div>
+        <div class="hud-controls-line" id="controlsTouchMove">Drag on stone -- Move Stone</div>
+        <div class="hud-controls-line" id="controlsTouchStoneRotate">Long Press + Drag on stone -- Rotate Stone</div>
+        <div class="hud-controls-line" id="controlsTouchDrop">Double Tap stone -- Drop Stone</div>
+        <div class="hud-controls-divider"></div>
+        <div class="hud-controls-section-title" id="controlsOtherTitle">Other</div>
+        <div class="hud-controls-line" id="controlsOtherDrop">Space -- Drop Stone</div>
+        <div class="hud-controls-line" id="controlsOtherTop">1 -- Top View</div>
+        <div class="hud-controls-line" id="controlsOtherSide">2 -- Side View</div>
+      </div>
+    </div>
+    <div id="gameOverOverlay">
+      <div id="gameOverContent">
+        <div id="gameOverTitle" class="game-over-title">GAME OVER</div>
+        <div class="game-over-panel">
+          <div id="gameOverCurrentHeading" class="game-over-heading">Current Run</div>
+          <div class="game-over-current-row"><span id="gameOverStackLabel">StackCount</span><span id="gameOverCurrentStack">0</span></div>
+          <div class="game-over-current-row"><span id="gameOverHeightLabel">Height</span><span id="gameOverCurrentHeight">0.00 m</span></div>
+        </div>
+        <div class="game-over-panel">
+          <div id="gameOverRankingHeading" class="game-over-heading">Local Ranking</div>
+          <ol id="gameOverRankingList" class="game-over-ranking"></ol>
+          <div id="gameOverRankingEmpty" class="game-over-empty">No records yet.</div>
+        </div>
+        <button id="stackAgainBtn" type="button">Stack Again</button>
+      </div>
+    </div>
+    <div id="startOverlay">
+      <img id="startLogo" src="img/logo.png" alt="Sai logo" />
+      <button id="beginBtn" type="button">Begin Stacking</button>
+    </div>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module" src="./js/sai.js"></script>
+  <script src="../scripts/site-header.js"></script>
+</body>
+</html>
+
