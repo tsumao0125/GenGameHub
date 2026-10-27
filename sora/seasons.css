@@ -1,0 +1,54 @@
+/* Seasons repeat every 112 days, in four 28-day chapters. */
+.season-scenery { position:absolute; inset:0; pointer-events:none; z-index:0; background-repeat:repeat-y; background-size:100% auto; opacity:.75; }
+.season-label { position:absolute; top:18px; right:18px; padding:6px 11px; border:1px solid #ffffff80; border-radius:30px; background:#fff9ecb8; color:#6a7966; font-size:11px; letter-spacing:1px; pointer-events:none; }
+.world { transition:background-color 1s; }
+body[data-season=spring] .world { background:linear-gradient(#d9e8df,#f5e7df 73%,#e7edce); }
+body[data-season=summer] .world { background:linear-gradient(#a9dce9,#d9eee4 73%,#dce8ba); }
+body[data-season=autumn] .world { background:linear-gradient(#e1d6c5,#f4dfbf 73%,#dfd0a4); }
+body[data-season=winter] .world { background:linear-gradient(#bfcfdf,#e5edf0 73%,#f0f1e7); }
+body[data-season=spring] .world[data-time=night] { background:linear-gradient(#657b91,#b3bfca 75%,#c9d1be); }
+body[data-season=summer] .world[data-time=night] { background:linear-gradient(#425f83,#829fb2 75%,#b7ccb5); }
+body[data-season=autumn] .world[data-time=night] { background:linear-gradient(#6e657e,#a99b9b 75%,#c9bd9c); }
+body[data-season=winter] .world[data-time=night] { background:linear-gradient(#52657e,#96adbf 75%,#d4e0e2); }
+body[data-season=spring] .street { background:#adbd95; color:#cc9aad; border-top-color:#e8cbd3; }
+body[data-season=summer] .street { background:#82ab7d; color:#487f62; border-top-color:#b8ce8d; }
+body[data-season=autumn] .street { background:#b6a278; color:#bc7d43; border-top-color:#d8bc86; }
+body[data-season=winter] .street { background:#dce7e4; color:#afc6c2; border-top-color:#f7faf4; }
+.elevator-menu .lift-controls button { width:100%; min-height:54px; }
+@media(prefers-reduced-motion:reduce) { .world { transition:none; } }
+body[data-season=spring] .season-scenery { background-image:url("svg/seasons/background-spring.svg"); }
+body[data-season=spring] .unit.supermarket, body[data-season=spring] .unit.supermarket.garden-upper { background-image:url("svg/seasons/supermarket-spring.svg"); }
+body[data-season=spring] .unit.cinema, body[data-season=spring] .unit.cinema.garden-upper { background-image:url("svg/seasons/cinema-spring.svg"); }
+body[data-season=spring] .unit.garden, body[data-season=spring] .unit.garden.garden-upper { background-image:url("svg/seasons/sky-garden-spring.svg"); }
+body[data-season=spring] .unit.amusement, body[data-season=spring] .unit.amusement.garden-upper { background-image:url("svg/seasons/amusement-park-spring.svg"); }
+body[data-season=summer] .season-scenery { background-image:url("svg/seasons/background-summer.svg"); }
+body[data-season=summer] .unit.supermarket, body[data-season=summer] .unit.supermarket.garden-upper { background-image:url("svg/seasons/supermarket-summer.svg"); }
+body[data-season=summer] .unit.cinema, body[data-season=summer] .unit.cinema.garden-upper { background-image:url("svg/seasons/cinema-summer.svg"); }
+body[data-season=summer] .unit.garden, body[data-season=summer] .unit.garden.garden-upper { background-image:url("svg/seasons/sky-garden-summer.svg"); }
+body[data-season=summer] .unit.amusement, body[data-season=summer] .unit.amusement.garden-upper { background-image:url("svg/seasons/amusement-park-summer.svg"); }
+body[data-season=autumn] .season-scenery { background-image:url("svg/seasons/background-autumn.svg"); }
+body[data-season=autumn] .unit.supermarket, body[data-season=autumn] .unit.supermarket.garden-upper { background-image:url("svg/seasons/supermarket-autumn.svg"); }
+body[data-season=autumn] .unit.cinema, body[data-season=autumn] .unit.cinema.garden-upper { background-image:url("svg/seasons/cinema-autumn.svg"); }
+body[data-season=autumn] .unit.garden, body[data-season=autumn] .unit.garden.garden-upper { background-image:url("svg/seasons/sky-garden-autumn.svg"); }
+body[data-season=autumn] .unit.amusement, body[data-season=autumn] .unit.amusement.garden-upper { background-image:url("svg/seasons/amusement-park-autumn.svg"); }
+body[data-season=winter] .season-scenery { background-image:url("svg/seasons/background-winter.svg"); }
+body[data-season=winter] .unit.supermarket, body[data-season=winter] .unit.supermarket.garden-upper { background-image:url("svg/seasons/supermarket-winter.svg"); }
+body[data-season=winter] .unit.cinema, body[data-season=winter] .unit.cinema.garden-upper { background-image:url("svg/seasons/cinema-winter.svg"); }
+body[data-season=winter] .unit.garden, body[data-season=winter] .unit.garden.garden-upper { background-image:url("svg/seasons/sky-garden-winter.svg"); }
+body[data-season=winter] .unit.amusement, body[data-season=winter] .unit.amusement.garden-upper { background-image:url("svg/seasons/amusement-park-winter.svg"); }
+
+/* Petals, leaves and snow float across the visible viewport without intercepting taps. */
+.season-drift { position:fixed; z-index:0; overflow:hidden; pointer-events:none; contain:strict; }
+.season-particle { position:absolute; top:-32px; width:var(--piece-size); height:var(--piece-size); opacity:var(--piece-opacity); animation:season-fall var(--fall-time) var(--fall-delay) linear infinite; will-change:transform; }
+.season-particle > i { display:block; width:100%; height:100%; animation:season-sway var(--sway-time) var(--fall-delay) ease-in-out infinite alternate; }
+.season-drift[data-season=spring] .season-particle > i { background:#f4b5cb; border-radius:90% 12% 80% 35%; box-shadow:inset 1px 1px 1px #fff5; }
+.season-drift[data-season=autumn] .season-particle > i { color:var(--piece-color); }
+.season-particle svg { display:block; width:100%; height:100%; overflow:visible; }
+.season-drift[data-season=winter] .season-particle > i { background:#fff; border-radius:50%; box-shadow:0 0 3px #ffffff90; }
+.season-drift.is-paused .season-particle,.season-drift.is-paused .season-particle > i { animation-play-state:paused; }
+@keyframes season-fall { from { transform:translate3d(-18px,-12px,0); } to { transform:translate3d(32px,calc(var(--drift-height) + 60px),0); } }
+@keyframes season-sway { from { transform:translateX(calc(-1 * var(--sway))) rotate(-35deg) rotateY(0deg); } to { transform:translateX(var(--sway)) rotate(110deg) rotateY(65deg); } }
+@media(prefers-reduced-motion:reduce) { .season-drift { display:none; } .season-particle,.season-particle > i { animation:none; } }
+
+/* Falling pieces remain behind the tower; remove their static background counterparts. */
+body[data-season=spring] .season-scenery,body[data-season=autumn] .season-scenery,body[data-season=winter] .season-scenery { display:none; }

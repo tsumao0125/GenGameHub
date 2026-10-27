@@ -53,6 +53,8 @@
     let context, musicBus, effectsBus, timer, nextBeat = 0, step = 0;
     let background = document.hidden, unlocked = false, lastEffect = -Infinity;
     const voices = /* @__PURE__ */ new Map();
+    let raining = window.soraRainActive === true, rainSource = null, rainBuffer = null;
+    const fadingRain = /* @__PURE__ */ new Set();
     const button = document.createElement("button");
     button.id = "audio-settings";
     button.type = "button";
@@ -88,10 +90,91 @@
       }
       updateControls();
     }
+    function disconnectRain(voice) {
+      if (voice.cleaned) return;
+      voice.cleaned = true;
+      voice.source.disconnect();
+      voice.filter.disconnect();
+      voice.gain.disconnect();
+    }
+    function stopRainAudio(immediate = false) {
+      const voice = rainSource;
+      rainSource = null;
+      if (voice) {
+        if (!immediate && (context == null ? void 0 : context.state) === "running") {
+          const now = context.currentTime, gain = voice.gain.gain;
+          if (typeof gain.cancelAndHoldAtTime === "function") gain.cancelAndHoldAtTime(now);
+          else {
+            const value = gain.value;
+            gain.cancelScheduledValues(now);
+            gain.setValueAtTime(value, now);
+          }
+          gain.linearRampToValueAtTime(0, now + 0.5);
+          fadingRain.add(voice);
+          voice.source.onended = () => {
+            fadingRain.delete(voice);
+            disconnectRain(voice);
+          };
+          voice.source.stop(now + 0.5);
+        } else {
+          try {
+            voice.source.stop();
+          } catch {
+          }
+          disconnectRain(voice);
+        }
+      }
+      if (immediate) {
+        for (const fading of fadingRain) {
+          try {
+            fading.source.stop();
+          } catch {
+          }
+          disconnectRain(fading);
+        }
+        fadingRain.clear();
+      }
+    }
+    function updateRainAudio() {
+      const canPlay = raining && settings.enabled && settings.effects > 0 && !background && !document.hidden && (context == null ? void 0 : context.state) === "running";
+      if (!canPlay) {
+        stopRainAudio();
+        return;
+      }
+      if (rainSource) return;
+      if (!rainBuffer) {
+        rainBuffer = context.createBuffer(2, context.sampleRate * 4, context.sampleRate);
+        for (let channel = 0; channel < 2; channel++) {
+          const data = rainBuffer.getChannelData(channel);
+          let low = 0;
+          for (let i = 0; i < data.length; i++) {
+            const white = Math.random() * 2 - 1;
+            low = low * 0.97 + white * 0.03;
+            data[i] = white * 0.45 + low * 2.2;
+          }
+        }
+      }
+      const source = context.createBufferSource(), filter = context.createBiquadFilter(), gain = context.createGain();
+      source.buffer = rainBuffer;
+      source.loop = true;
+      filter.type = "lowpass";
+      filter.frequency.value = 2600;
+      filter.Q.value = 0.45;
+      gain.gain.setValueAtTime(0, context.currentTime);
+      gain.gain.setTargetAtTime(0.5, context.currentTime, 0.18);
+      source.connect(filter).connect(gain).connect(effectsBus);
+      source.start();
+      rainSource = { source, filter, gain };
+    }
+    document.addEventListener("sora:rain", (e) => {
+      raining = e.detail === true;
+      updateRainAudio();
+    });
     function applyVolume() {
       if (!context) return;
       musicBus.gain.setTargetAtTime(settings.music / 100 * 0.65, context.currentTime, 0.08);
       effectsBus.gain.setTargetAtTime(settings.effects / 100 * 0.45, context.currentTime, 0.02);
+      updateRainAudio();
     }
     function stopVoices(kind) {
       for (const [source, voiceKind] of voices) {
@@ -179,12 +262,14 @@
           scheduleMusic();
           timer = setInterval(scheduleMusic, 100);
         }
+        updateRainAudio();
         updateControls();
       } catch {
         updateControls();
       }
     }
     function suspendAudio() {
+      stopRainAudio(true);
       clearInterval(timer);
       timer = null;
       stopVoices();
@@ -197,6 +282,8 @@
       if (!settings.enabled || !settings.effects || background || (context == null ? void 0 : context.state) !== "running") return;
       lastEffect = performance.now();
       const patterns = {
+        coin: [[96, 0, 0.14, 0.18, "triangle"], [108, 0.015, 0.42, 0.09, "sine"], [103, 0.08, 0.3, 0.11, "triangle"], [115, 0.11, 0.42, 0.055, "sine"]],
+        "santa-bells": [[100, 0, 0.14, 0.13, "sine"], [107, 0.04, 0.2, 0.09, "sine"], [100, 0.23, 0.14, 0.13, "sine"], [112, 0.28, 0.25, 0.065, "sine"], [104, 0.48, 0.22, 0.1, "sine"], [111, 0.52, 0.3, 0.07, "sine"]],
         tap: [[72, 0, 0.07, 0.11]],
         build: [[72, 0, 0.22, 0.18], [76, 0.08, 0.25, 0.16], [79, 0.16, 0.38, 0.15]],
         floor: [[60, 0, 0.2, 0.16], [67, 0.1, 0.22, 0.17], [72, 0.2, 0.35, 0.16], [76, 0.3, 0.45, 0.13]],

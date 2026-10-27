@@ -1,0 +1,77 @@
+/* One continuous illustration covers the full height, including the floor seams. */
+#premium-art-layer { position:absolute; inset:0; pointer-events:none; z-index:4; }
+.unit.premium-unified { background-image:none!important; background-color:transparent!important; box-shadow:none!important; }
+.unit.premium-unified > .name,.unit.premium-unified > .visitors { visibility:hidden; }
+.premium-continuous { position:absolute; background-repeat:no-repeat; background-size:100% 100%; }
+.premium-continuous > .premium-title { position:absolute; bottom:3px; left:0; right:0; padding:3px; text-align:center; font-size:10px; color:#655746; background:#fff6dfdc; }
+.premium-continuous.amusement { -webkit-mask:url('svg/rooftop-cloud-mask.svg') center/100% 100% no-repeat; mask:url('svg/rooftop-cloud-mask.svg') center/100% 100% no-repeat; }
+.seasonal-front { position:fixed; z-index:8; pointer-events:none; overflow:hidden; contain:strict; }
+.summer-rain { position:absolute; inset:0; background:#45617a16; }
+.summer-rain i { position:absolute; top:-45px; width:1.5px; height:32px; background:linear-gradient(transparent,#e5f7ffcc); animation:summer-downpour .8s linear infinite; }
+@keyframes summer-downpour { from { transform:translate3d(18px,-35px,0) rotate(12deg); } to { transform:translate3d(-80px,calc(var(--event-height) + 50px),0) rotate(12deg); } }
+.hanami-event { pointer-events:auto; position:absolute; right:12px; bottom:16px; max-width:calc(100% - 24px); min-height:48px; padding:10px 14px; border:1px solid #d5a3b6; background:#fff1f6f2; box-shadow:0 5px 22px #83506925; color:#985f77; font-size:12px; border-radius:18px; }
+.santa-event { pointer-events:auto; position:absolute; top:18%; left:0; width:158px; height:88px; background:transparent; border:0; padding:0; animation:santa-crossing 22s linear infinite; }
+.santa-event img { transform:scaleX(-1); display:block; width:100%; height:65px; }
+.santa-event span { display:inline-block; background:#fff8e8e8; border-radius:15px; color:#975443; padding:2px 8px; font-size:11px; }
+@keyframes santa-crossing { from { transform:translate3d(calc(var(--event-width) - 70px),0,0); } 50% { transform:translate3d(calc(var(--event-width)/2 - 80px),-12px,0); } to { transform:translate3d(-120px,0,0); } }
+.seasonal-front.is-paused * { animation-play-state:paused!important; }
+body { grid-template-rows:auto minmax(0,1fr) auto auto auto; }
+body > #game-ticker { grid-row:3; padding:7px 12px; min-height:30px; max-height:64px; overflow:auto; background:#6d8474; color:#fff9e8; font-size:11px; line-height:1.5; }
+body > .mobile-toolbar { grid-row:4; }
+body > .ad-preview { grid-row:5; }
+.worldnote { display:none; }
+.aged-room-dialog { width:min(390px,calc(100vw - 24px)); border-radius:16px; color:#365d50; background:#fafbf3; }
+.aged-room-dialog h2 { font-size:19px; }
+.aged-room-dialog p { line-height:1.8; font-size:13px; }
+.aged-room-dialog button { display:block; width:100%; min-height:46px; margin-top:10px; }
+.aged-room-dialog button:disabled { opacity:.45; }
+#aged-demolish { color:#986246; border-color:#d0b49e; }
+@media(prefers-reduced-motion:reduce) { .summer-rain i { animation:none; top:20%; height:65%; opacity:.2; } .santa-event { animation:none; left:auto; right:10px; top:28%; } }
+
+.premium-continuous.quiet { filter:brightness(.55); }
+.premium-continuous > .visitors { z-index:1; }
+
+/* Keep daily finances and current events together in a taller, warm notice band. */
+body > #game-ticker { min-height:72px; max-height:110px; padding:10px 14px; background:#d48b48; color:#fffaf0; font-size:12px; line-height:1.65; border-top:1px solid #edb674; }
+.ticker-finance { font-weight:700; }
+.ticker-message { margin-top:3px; color:#fff5df; }
+.hanami-event { width:210px; padding:0 0 8px; border-radius:14px; overflow:hidden; }
+.hanami-event img { display:block; width:100%; height:86px; object-fit:cover; }
+.hanami-event b,.hanami-event span { display:block; padding:0 6px; }
+.hanami-event b { margin-top:5px; font-size:12px; }
+.hanami-event span { margin-top:2px; font-size:11px; }
+@media(max-height:500px) { body > #game-ticker { min-height:54px; max-height:76px; padding:5px 10px; font-size:10px; } .hanami-event { width:172px; } .hanami-event img { height:60px; } }
+
+/* Reserved orange strip, with text only during each two-second notification. */
+body > #game-ticker { display:flex; align-items:center; justify-content:center; text-align:center; }
+#game-ticker .ticker-message { margin:0; font-size:14px; font-weight:700; line-height:1.6; color:#fffaf0; }
+@media(max-height:500px) { #game-ticker .ticker-message { font-size:11px; } }
+
+/* Notifications occupy the strip above the build controls only while visible. */
+body > #game-ticker[hidden] { display:none; }
+.autumn-cafe-indicator { position:absolute; top:14px; right:12px; max-width:calc(100% - 190px); border:1px solid #e7bd79; border-radius:12px; padding:7px 10px; background:#fff4dbe8; color:#8f5d2f; font-size:11px; line-height:1.6; text-align:center; animation:autumn-cafe-blink 2s ease-in-out infinite; }
+@keyframes autumn-cafe-blink { 0%,100% { opacity:1; } 50% { opacity:.28; } }
+.premium-continuous.garden.hanami-garden { background-image:url('svg/hanami-picnic.svg')!important; }
+.unit.hanami-clickable { cursor:pointer; }
+body > header #clock { display:flex; align-items:center; flex-wrap:wrap; column-gap:9px; row-gap:0; }
+.calendar-date,.calendar-time { white-space:nowrap; }
+.calendar-time { font-size:.8em; }
+@media(max-width:600px) { body > header #clock { font-size:clamp(12px,3.6vw,19px); } }
+@media(prefers-reduced-motion:reduce) { .autumn-cafe-indicator { animation:none; } }
+
+/* Draw the entire hover/focus border above room labels and cobwebs. */
+.unit.repairable:hover,.unit.repairable:focus-visible,.unit.empty.cannot-build:hover,.unit.empty.cannot-build:focus-visible { box-shadow:none; }
+.unit.repairable:hover::after,.unit.repairable:focus-visible::after,.unit.empty.cannot-build:hover::after,.unit.empty.cannot-build:focus-visible::after { content:""; position:absolute; inset:0; border:3px solid #78a66c; z-index:20; pointer-events:none; }
+.unit.repair-unaffordable:hover::after,.unit.repair-unaffordable:focus-visible::after,.unit.empty.cannot-build:hover::after,.unit.empty.cannot-build:focus-visible::after { border-color:#c45147; }
+.unit.repair-unaffordable:hover,.unit.repair-unaffordable:focus-visible { cursor:pointer; }
+/* Keep the event notice immediately to the left of the seasonal date. */
+.seasonal-front-events { position:absolute; inset:0; pointer-events:none; }
+.seasonal-front-status { position:absolute; top:14px; right:12px; max-width:calc(100% - 178px); display:flex; align-items:center; justify-content:flex-end; gap:6px; pointer-events:none; }
+.seasonal-front-status .season-label { position:static; flex:none; min-width:80px; padding:5px 8px; text-align:center; white-space:nowrap; font-size:10px; line-height:1.35; }
+.seasonal-front-status .season-time { display:block; font-size:10px; letter-spacing:0; }
+.seasonal-front-status .autumn-cafe-indicator { position:static; flex:0 1 auto; min-width:0; max-width:none; padding:6px; }
+.santa-event { height:65px; min-height:44px; }
+
+/* The seasonal date and time stay on one line. */
+.seasonal-front-status .season-time { display:inline; margin-left:5px; }
+@media(max-width:400px) { .seasonal-front-status.with-autumn { top:72px; max-width:calc(100% - 24px); } }
