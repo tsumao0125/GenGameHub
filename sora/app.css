@@ -1,0 +1,139 @@
+/* Android-only audio controls. Keep them accessible when the HUD is collapsed. */
+.hud-heading > b { margin-right:auto; }
+.hud-heading #audio-settings { font-size:12px; padding:7px 8px; min-height:36px; white-space:nowrap; }
+.audio-dialog { width:min(360px, calc(100vw - 32px)); padding:22px; border:1px solid #c6d5c0; border-radius:18px; background:#fafbf3; color:#365d50; box-shadow:0 18px 70px #172f4c40; }
+.audio-dialog::backdrop { background:#163e3b65; }
+.audio-dialog h2 { margin:0; font-size:19px; }
+.audio-dialog .sheet-heading { margin-bottom:24px; }
+.audio-dialog .sheet-heading button { min-width:44px; min-height:44px; font-size:24px; }
+.audio-switch { display:flex; justify-content:space-between; align-items:center; padding-bottom:18px; border-bottom:1px solid #dce3d5; font-weight:700; }
+.audio-switch input { width:24px; height:24px; accent-color:#347d65; }
+.audio-volume { display:grid; grid-template-columns:1fr auto; gap:14px; margin-top:24px; font-size:15px; }
+.audio-volume output { font-variant-numeric:tabular-nums; color:#687d6f; }
+.audio-volume input { grid-column:1/-1; width:100%; margin:0; height:36px; accent-color:#347d65; touch-action:pan-y; }
+.audio-volume input:disabled { opacity:.4; }
+.audio-note { margin:24px 0 0; color:#687d6f; font-size:12px; line-height:1.8; }
+
+/* Open the rooftop to the sky when the rooftop park is installed. */
+#tower.has-rooftop-park > .roof { display:none; }
+
+/* The upper park is open air, rather than two labelled indoor floors. */
+#tower.has-rooftop-park { border-color:transparent; box-shadow:none; }
+#tower.has-rooftop-park .floor:not(.rooftop-park-upper),
+#tower.has-rooftop-park .foundation { box-shadow:-7px 0 0 #637d72,7px 0 0 #637d72; }
+#tower .rooftop-park-floor { background:transparent; }
+#tower .rooftop-park-upper { border-bottom-color:transparent; }
+#tower .rooftop-park-upper > .floorlabel,
+#tower .rooftop-park-floor > .shaft { visibility:hidden; pointer-events:none; }
+#tower.has-rooftop-park #lift-layer { clip-path:inset(var(--rooftop-height,300px) 0 0 0); }
+
+/* One continuous, softly scalloped silhouette shared by all three park slices. */
+#tower .rooftop-park-floor .unit.amusement {
+  background-color:transparent;
+  box-shadow:none;
+  border:0;
+  -webkit-mask-image:url("svg/rooftop-cloud-mask.svg");
+  mask-image:url("svg/rooftop-cloud-mask.svg");
+  -webkit-mask-size:100% 300%;
+  mask-size:100% 300%;
+  -webkit-mask-position:center var(--park-y,100%);
+  mask-position:center var(--park-y,100%);
+  -webkit-mask-repeat:no-repeat;
+  mask-repeat:no-repeat;
+}
+#tower .rooftop-park-floor { border-bottom-width:0; }
+
+/* Allocate header, tower and controls from the real available screen height. */
+html { height:100%; overflow:hidden; }
+body {
+  width:100%; height:var(--app-height,100dvh); min-height:0; overflow:hidden;
+  display:grid; grid-template-rows:auto minmax(0,1fr) auto auto;
+}
+body > header { grid-row:1; min-width:0; }
+body > main { grid-row:2; height:auto; min-width:0; min-height:0; }
+body > .mobile-toolbar { grid-row:3; }
+body > dialog { position:fixed; max-height:calc(var(--app-height,100dvh) - 24px); overflow:auto; }
+body .hud { top:calc(var(--app-header-height,77px) + 12px); max-height:max(44px,calc(var(--app-content-height,70dvh) - 24px)); }
+body .world-zoom-controls { top:calc(var(--app-header-height,77px) + 12px); }
+
+@media (max-width:760px), (pointer:coarse) and (max-height:600px) {
+  body > header {
+    display:grid; grid-template-columns:minmax(0,1fr) auto auto;
+    height:auto; min-height:64px; padding:8px 12px; gap:3px 8px;
+  }
+  header .brand { grid-column:1; grid-row:1; min-width:0; font-size:18px; white-space:nowrap; }
+  header .clock { grid-column:1; grid-row:2; margin:0; font-size:10px; white-space:nowrap; }
+  header #pause { grid-column:2; grid-row:1 / span 2; }
+  header #speed { grid-column:3; grid-row:1 / span 2; }
+  header button { font-size:11px; min-height:44px; padding:7px; }
+  body > main { grid-template-columns:minmax(0,1fr); height:auto; }
+  body > .mobile-toolbar {
+    position:static; height:auto; min-height:110px; width:100%;
+    padding:8px 12px; align-items:stretch;
+  }
+  .mobile-toolbar .mobile-build-actions { flex:1.2; min-width:0; }
+  body .hud { width:220px; max-width:calc(100vw - 24px); }
+  body .hud.collapsed { width:166px; }
+  .hud-heading > b { white-space:nowrap; }
+  body .mobile-dialog { max-height:calc(var(--app-height,100dvh) - 20px); }
+}
+@media (max-height:500px) and (max-width:760px), (pointer:coarse) and (max-height:500px) {
+  body > header { grid-template-columns:auto minmax(0,1fr) auto auto; min-height:54px; padding:5px 10px; }
+  header .brand { grid-row:1; grid-column:1; font-size:16px; }
+  header .clock { grid-row:1; grid-column:2; justify-self:end; font-size:10px; }
+  header #pause { grid-row:1; grid-column:3; }
+  header #speed { grid-row:1; grid-column:4; }
+  body > .mobile-toolbar { min-height:62px; padding:6px 10px; }
+  .mobile-toolbar .mobile-build-actions { display:contents; }
+  .mobile-toolbar button, .mobile-toolbar > #mobile-manage-open { flex:1; min-width:0; font-size:11px; padding:5px; }
+  #mobile-bulk-repair span { font-size:9px; margin-top:1px; }
+  body .hud { top:calc(var(--app-header-height,54px) + 8px); padding:8px; }
+}
+@media (max-width:360px) and (max-height:500px) {
+  body > header { grid-template-columns:minmax(0,1fr) auto auto; min-height:64px; }
+  header .clock { grid-row:2; grid-column:1; justify-self:start; }
+  header #pause { grid-row:1 / span 2; grid-column:2; }
+  header #speed { grid-row:1 / span 2; grid-column:3; }
+}
+
+body > .ad-preview { grid-row:4; min-height:78px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:12px 8px 6px; background:#f4f6ef; border-top:1px solid #dce3d5; color:#78877b; font-size:11px; }
+.ad-preview small { font-size:9px; }
+.ad-preview div { width:min(320px,100%); min-height:42px; display:grid; place-items:center; border:1px dashed #b7c8b6; border-radius:4px; }
+
+/* Preview the same edge-to-edge boundary as the native ad row. */
+body > .ad-preview { min-height:50px; padding:0; border-top:0; }
+.ad-preview div { min-height:50px; }
+
+/* Date/time leads the header; sound controls follow the speed button. */
+body > header {
+  display:grid; grid-template-columns:minmax(0,1fr) auto auto auto;
+  height:auto; min-height:64px; padding:8px 12px; gap:6px 8px;
+}
+body > header #clock {
+  grid-column:1; grid-row:1; justify-self:start; margin:0;
+  min-width:0; font-size:clamp(18px,2.4vw,26px); font-weight:700;
+  line-height:1.35; white-space:nowrap; font-variant-numeric:tabular-nums;
+}
+body > header #pause { grid-column:2; grid-row:1; justify-self:stretch; }
+body > header #speed { grid-column:3; grid-row:1; }
+body > header #audio-settings { grid-column:4; grid-row:1; white-space:nowrap; font-size:12px; }
+body > header button { min-width:44px; min-height:44px; align-self:center; }
+@media (max-width:600px) {
+  body > header { grid-template-columns:minmax(0,1fr) auto auto auto; min-height:60px; padding:6px 8px; gap:4px; }
+  body > header #clock { grid-column:1; grid-row:1; font-size:clamp(13px,4.2vw,22px); letter-spacing:-.3px; }
+  body > header #pause { grid-column:2; grid-row:1; justify-self:stretch; font-size:18px; }
+  body > header #pause .pause-label { display:none; }
+  body > header #speed { grid-column:3; grid-row:1; }
+  body > header #audio-settings { grid-column:4; grid-row:1; font-size:11px; }
+  body > header button { min-width:44px; min-height:44px; padding:6px; white-space:nowrap; }
+}
+@media (min-width:601px) and (max-height:500px) {
+  body > header { min-height:54px; padding:5px 10px; }
+  body > header #clock { font-size:20px; }
+}
+
+/* Two operating rates, without diagnostic advice, available on phones too. */
+.business-summary { display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:12px 0; border-top:1px solid #dce3d5; }
+.business-summary > div { display:flex; flex-direction:column; gap:5px; }
+.business-summary small { font-size:10px; color:#78877b; }
+.business-summary b { font-size:17px; font-variant-numeric:tabular-nums; }
