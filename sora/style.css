@@ -49,3 +49,7 @@
 
 .bulk-repair{background:#edf1e4}.bulk-repair:disabled{opacity:.5;cursor:default}.bulk-repair span{float:right;font-size:10px}.mobile-build-actions{display:contents}@media(max-width:760px){:root{--sora-toolbar-height:calc(116px + env(safe-area-inset-bottom,0px))}body main{height:calc(100dvh - 77px - var(--sora-toolbar-height) - var(--site-header-height,0px))}.mobile-toolbar{height:var(--sora-toolbar-height);align-items:stretch}.mobile-build-actions{display:flex;flex:1.2;min-width:0;flex-direction:column;gap:6px}.mobile-build-actions button{flex:1;font-size:11px;padding:7px 5px;min-height:44px}#mobile-bulk-repair span{display:block;float:none;font-size:10px;margin-top:2px}.mobile-toolbar>#mobile-manage-open{flex:1}.hud{max-height:calc(100dvh - 205px - var(--site-header-height,0px))}body .hud{max-height:calc(100dvh - 205px - var(--site-header-height,0px))}}
 
+
+/* Keep help and restart reachable in the expanded mobile HUD. */
+#hud-content > .game-menu-footer { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; padding-top:12px; }
+#hud-content > .game-menu-footer button { flex:1; min-height:44px; padding:8px; font-size:12px; color:#365d50; border:1px solid #c6d5c0; border-radius:8px; background:#fafbf3; }
