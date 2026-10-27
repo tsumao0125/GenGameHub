@@ -66,6 +66,9 @@
         }
       }
       @media (max-width: 700px){
+        body > .site-header{
+          display: none;
+        }
         .site-header__inner{
           padding: 4px 0;
           flex-wrap: nowrap;

@@ -7,6 +7,9 @@
     body > main { grid-row:3; }
     body > #game-ticker { grid-row:4; }
     body > .mobile-toolbar { grid-row:5; }
+    @media (max-width: 700px) {
+      body > .site-header { display:none; }
+    }
   `;
   document.head.appendChild(style);
 })();
