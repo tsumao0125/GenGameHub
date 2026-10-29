@@ -1,4 +1,5 @@
 let tickerTimer=null,tickerQueue=[],tickerBusy=false;
+let titleScreenOpen=true,hasSavedGame=false;
 function gameSound(type){document.dispatchEvent(new CustomEvent('sora:sound',{detail:type}))}
 const types={office:{name:'オフィス',icon:'▤',art:'▥ ▥',cost:8000,income:2200,people:10},home:{name:'住宅',icon:'⌂',art:'▧ 🪴',cost:7000,income:1800,people:6},cafe:{name:'カフェ',icon:'☕',art:'☕ 🪑',cost:6000,income:1400,people:4},shop:{name:'ショップ',icon:'♧',art:'▥ 🛍',cost:7500,income:1600,people:5},garden:{name:'空中庭園',icon:'❀',art:'🌳 🌿',cost:4500,income:0,people:0}};
 Object.entries(types).forEach(([k,t])=>t.size=['cafe','shop'].includes(k)?1:2);
@@ -33,17 +34,17 @@ function settleHomeSales(){let amount=0;s.floors.forEach((f,i)=>f.forEach((type,
 function tenantGroup(type){let kind=types[type].kind||type;return kind==='office'?0:kind==='home'?1:2}
 function tenantGroupName(type){return ['オフィス系','住宅系','ショップ系'][tenantGroup(type)]}
 Object.keys(types).forEach(k=>{if(tenantGroup(k)===2&&k!=='elevator')types[k].people=Math.round(types[k].people*1.2)});
-const $=s=>document.querySelector(s),yen=n=>'¥'+Math.round(n).toLocaleString('ja-JP');let s={cash:32000,day:1,hour:8,floors:[['office','home','cafe'],[null,null,null]],lifts:1},pageSuspended=false,animationEpoch=0,viewZoom=1,mobileOverlayOpen=false,chartOpen=false,selected='office',lastLayout='',speed=1,paused=false,inspectPaused=false;try{let a=JSON.parse(localStorage.getItem('sora-tower-v1'));if(a&&Array.isArray(a.floors)&&a.floors.length>0&&a.floors.length<=20&&a.floors.every(f=>Array.isArray(f)&&f.length===3&&f.every(t=>t===null||types[t]))&&Number.isFinite(a.cash)&&a.cash>=0&&Number.isFinite(a.day)&&Number.isFinite(a.hour)&&Number.isFinite(a.lifts)&&a.lifts>=1)s=a}catch{}
+const $=s=>document.querySelector(s),yen=n=>'¥'+Math.round(n).toLocaleString('ja-JP');let s={cash:32000,day:1,hour:8,floors:[['office','home','cafe'],[null,null,null]],lifts:1},pageSuspended=false,animationEpoch=0,viewZoom=1,mobileOverlayOpen=false,chartOpen=false,selected='office',lastLayout='',speed=1,paused=false,inspectPaused=false;try{let a=JSON.parse(localStorage.getItem('sora-tower-v1'));if(a&&Array.isArray(a.floors)&&a.floors.length>0&&a.floors.length<=20&&a.floors.every(f=>Array.isArray(f)&&f.length===3&&f.every(t=>t===null||types[t]))&&Number.isFinite(a.cash)&&a.cash>=0&&Number.isFinite(a.day)&&Number.isFinite(a.hour)&&Number.isFinite(a.lifts)&&a.lifts>=1){s=a;hasSavedGame=true}}catch{}
 // Expand legacy standard slots into half slots; keep previous saves intact.
 s.width=6;s.floors=s.floors.map(f=>f.flatMap(t=>t?[t,types[t].size===2?'~':null]:[null,null]));
-try{const newer=JSON.parse(localStorage.getItem('sora-tower-v2'));if(newer&&[4,6,8,10,12].includes(newer.width)&&newer.floors.every(f=>f.length===newer.width&&f.every((t,i)=>t===null||(t==='~'?i>0&&(types[f[i-1]]?.size===2||f[i-1]==='garden'):types[t]&&(types[t].size===1||f[i+1]==='~'))))&&Number.isFinite(newer.cash)&&newer.cash>=0&&Number.isInteger(newer.hour)&&newer.hour>=0&&newer.hour<24&&newer.day>=1&&newer.lifts>=1)s=newer}catch{}
+try{const newer=JSON.parse(localStorage.getItem('sora-tower-v2'));if(newer&&[4,6,8,10,12].includes(newer.width)&&newer.floors.every(f=>f.length===newer.width&&f.every((t,i)=>t===null||(t==='~'?i>0&&(types[f[i-1]]?.size===2||f[i-1]==='garden'):types[t]&&(types[t].size===1||f[i+1]==='~'))))&&Number.isFinite(newer.cash)&&newer.cash>=0&&Number.isInteger(newer.hour)&&newer.hour>=0&&newer.hour<24&&newer.day>=1&&newer.lifts>=1){s=newer;hasSavedGame=true}}catch{}
 // v3 adds rectangular footprints and full-height elevator shafts.
 let v3=null;try{v3=JSON.parse(localStorage.getItem('sora-tower-v3'))}catch{}
-if(v3&&Array.isArray(v3.floors)&&[4,6,8,10,12].includes(v3.width)&&v3.floors.every(f=>Array.isArray(f)&&f.length===v3.width)&&Number.isFinite(v3.cash)){s=v3}else{let refunded=0;s.floors.forEach(f=>f.forEach((t,k)=>{if(t==='garden'){f[k]=null;if(f[k+1]==='~')f[k+1]=null;refunded+=4500}}));s.cash+=refunded;if(refunded)notice('旧サイズの庭園は建設費を返金しました。新しい大型庭園を建設できます。')}
+if(v3&&Array.isArray(v3.floors)&&[4,6,8,10,12].includes(v3.width)&&v3.floors.every(f=>Array.isArray(f)&&f.length===v3.width)&&Number.isFinite(v3.cash)){s=v3;hasSavedGame=true}else{let refunded=0;s.floors.forEach(f=>f.forEach((t,k)=>{if(t==='garden'){f[k]=null;if(f[k+1]==='~')f[k+1]=null;refunded+=4500}}));s.cash+=refunded;if(refunded)notice('旧サイズの庭園は建設費を返金しました。新しい大型庭園を建設できます。')}
 s.liftCols=s.liftCols||[];s.liftLevel=s.liftLevel||s.lifts||1;
 // Existing shafts become inserted columns, returning their former tenant space.
 let v4=null;try{v4=JSON.parse(localStorage.getItem('sora-tower-v4'))}catch{}
-if(v4&&Array.isArray(v4.floors)&&[4,6,8,10,12].includes(v4.width)&&v4.floors.every(f=>Array.isArray(f)&&f.length===v4.width)&&Array.isArray(v4.liftCols)&&Number.isFinite(v4.cash)){s=v4}else{s.floors.forEach((f,i)=>s.liftCols.forEach(k=>{if(f[k]==='elevator'){f[k]=null;f[k+1]=null}}));}
+if(v4&&Array.isArray(v4.floors)&&[4,6,8,10,12].includes(v4.width)&&v4.floors.every(f=>Array.isArray(f)&&f.length===v4.width)&&Array.isArray(v4.liftCols)&&Number.isFinite(v4.cash)){s=v4;hasSavedGame=true}else{s.floors.forEach((f,i)=>s.liftCols.forEach(k=>{if(f[k]==='elevator'){f[k]=null;f[k+1]=null}}));}
 s.extraLiftLevel=Math.min(3,s.extraLiftLevel||s.liftLevel);s.liftLevel=Math.min(3,s.liftLevel);s.liftCols=s.liftCols.map(()=>s.width);
 s.peakPopulation=s.peakPopulation||0;s.occupancy=Number.isFinite(s.occupancy)?s.occupancy:1;s.insolventDays=s.insolventDays||0;
 if(!s.leaseAgeVersion){Object.values(s.leases||{}).forEach(r=>r.wear=r.abandoned?Math.max(30,r.wear/1.6):r.wear/1.6);s.leaseAgeVersion=2}
@@ -138,7 +139,7 @@ function evolveTenancy(daily){
  }));
  s.occupancy=leaseOccupancy();
 }
-function save(){try{localStorage.setItem('sora-tower-v4',JSON.stringify(s))}catch{notice('保存できません。ブラウザの保存設定をご確認ください。')}}function notice(t){showTickerMessage(t);if(t.includes('必要です')||t.startsWith('資金不足'))gameSound('error')}
+function save(){if(titleScreenOpen)return;try{localStorage.setItem('sora-tower-v4',JSON.stringify(s))}catch{notice('保存できません。ブラウザの保存設定をご確認ください。')}}function notice(t){showTickerMessage(t);if(t.includes('必要です')||t.startsWith('資金不足'))gameSound('error')}
 
 // A small CSS-driven layer follows the visible tower viewport, independent of tower zoom.
 let seasonDriftLayer=null,seasonDriftKey='';
@@ -176,11 +177,12 @@ function nextTickerMessage(){if(tickerBusy||!tickerQueue.length)return;const mes
 function showTickerMessage(message){if(!message)return;tickerQueue.push(message);nextTickerMessage()}
 function clearTickerMessages(){clearTimeout(tickerTimer);tickerTimer=null;tickerQueue=[];tickerBusy=false;ensureTicker().querySelector('.ticker-message').textContent='';ensureTicker().hidden=true}
 function financeNotice(text){s.lastFinanceNotice=text;$('#notice').textContent=text}
-function updateMorningTicker(){if(s.hour!==8||s.lastMorningNoticeDay===s.day)return;s.lastMorningNoticeDay=s.day;const profit=metrics().profit+(s.eventReceipts?.[s.day]||0);showTickerMessage(calendarDateLabel()+'：収支'+yen(profit))}
+function updateMorningTicker(){if(titleScreenOpen||s.hour!==8||s.lastMorningNoticeDay===s.day)return;s.lastMorningNoticeDay=s.day;const profit=metrics().profit+(s.eventReceipts?.[s.day]||0);showTickerMessage(calendarDateLabel()+'：収支'+yen(profit))}
 function rewardSeasonalEvent(kind){const state=yearlyEvents(),active=activeSeasonalEvents();let amount=0,text='';if(kind==='hanami'&&active.hanami){state.hanamiClaimed=true;amount=100000;text='お花見イベントの報酬'}else if(kind==='santa'&&active.santa){state.santaClaimed=true;amount=200000;text='サンタクロースからのプレゼント'}else if(kind==='rain'&&state.rainSeenDays.length===2&&!state.rainRewarded&&eventCalendar().day>Math.max(...state.rainDays)){state.rainRewarded=true;amount=50000;text='大雨がやみました。雨上がりのボーナス'}if(!amount)return false;s.cash+=amount;s.eventReceipts=s.eventReceipts||{};s.eventReceipts[s.day]=(s.eventReceipts[s.day]||0)+amount;if(kind!=='rain')notice(text+'：'+yen(amount)+'を受け取りました。');if(seasonAt().id!=='autumn')gameSound('coin');save();return true}
 function ensureSeasonalFront(){if(seasonalFront)return;const world=$('.world');seasonalFront=document.createElement('div');seasonalFront.className='seasonal-front';seasonalFront.setAttribute('aria-label','季節のイベント');world.appendChild(seasonalFront);seasonalFront.innerHTML='<div class="seasonal-front-events"></div><div class="seasonal-front-status"></div>';seasonalFront.querySelector('.seasonal-front-status').appendChild(document.querySelector('.season-label'));const measure=()=>{const r=world.getBoundingClientRect();Object.assign(seasonalFront.style,{left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});seasonalFront.style.setProperty('--event-width',r.width+'px');seasonalFront.style.setProperty('--event-height',r.height+'px')};new ResizeObserver(measure).observe(world);window.addEventListener('resize',measure);window.visualViewport?.addEventListener('resize',measure);measure();const syncPause=()=>{seasonalFront.classList.toggle('is-paused',eventPaused());syncSeasonalRain()};new MutationObserver(syncPause).observe(document.body,{attributes:true,subtree:true,attributeFilter:['open']});setInterval(()=>{if(activeSeasonalEvents().santa&&!eventPaused())gameSound('santa-bells')},1800)}
 function syncSeasonalRain(){window.soraRainActive=activeSeasonalEvents().rain&&!eventPaused();document.dispatchEvent(new CustomEvent('sora:rain',{detail:window.soraRainActive}))}
 function updateSeasonalEvents(){
+ if(titleScreenOpen)return;
  ensureTicker();ensureSeasonalFront();const state=yearlyEvents(),calendar=eventCalendar();let active=activeSeasonalEvents();
  if(active.rain&&!state.rainSeenDays.includes(calendar.day))state.rainSeenDays.push(calendar.day);
 
@@ -189,7 +191,7 @@ function updateSeasonalEvents(){
  if(key!==seasonalEventKey){seasonalEventKey=key;state.announced=state.announced||{};for(const [event,isActive,text] of [['hanami',active.hanami,'空中庭園でお花見が開催されています'],['santa',active.santa,'サンタクロースがやってきました']]){if(isActive&&!state.announced[event]){state.announced[event]=true;showTickerMessage(text)}}}
  const frontKey=[active.hanami,active.rain,active.santa,active.autumn].join(':');
  if(frontKey!==seasonalFrontKey){seasonalFrontKey=frontKey;const eventHost=seasonalFront.querySelector('.seasonal-front-events'),status=seasonalFront.querySelector('.seasonal-front-status');eventHost.replaceChildren();status.classList.toggle('with-autumn',active.autumn);status.querySelector('.autumn-cafe-indicator')?.remove();
-  if(active.autumn){const badge=document.createElement('div');badge.className='autumn-cafe-indicator';badge.setAttribute('role','status');badge.textContent='カフェの売り上げが倍増しています';status.prepend(badge)}
+  if(active.autumn){const badge=document.createElement('div');badge.className='autumn-cafe-indicator';badge.setAttribute('role','status');badge.textContent='カフェの売り上げが倍増しています';status.appendChild(badge)}
   if(active.rain){const rain=document.createElement('div');rain.className='summer-rain';rain.setAttribute('aria-hidden','true');rain.innerHTML=Array.from({length:46},(_,i)=>'<i style="left:'+((i*37)%105)+'%;animation-duration:'+(0.65+i%5*.09)+'s;animation-delay:-'+(i*.137)+'s"></i>').join('');eventHost.appendChild(rain)}
 
   if(active.santa){const button=document.createElement('button');button.className='santa-event';button.setAttribute('aria-label','サンタクロースをタップして20万円を受け取る');button.innerHTML='<img src="svg/santa-sleigh.svg" alt="鈴を鳴らして空を飛ぶサンタクロースとトナカイ">';button.onclick=()=>{if(rewardSeasonalEvent('santa'))render()};eventHost.appendChild(button)}
@@ -219,7 +221,7 @@ function build(i,j){[i,j]=anchor(i,j);let existing=s.floors[i][j];if(existing===
 let t=types[selected];let height=t.height||1;let issue=constructionIssue(i,j);if(issue)return notice(issue);s.cash-=t.cost;for(let y=i;y<i+height;y++)for(let x=j;x<j+t.size;x++)s.floors[y][x]=(y===i&&x===j)?selected:'@'+i+','+j;if(isLease(selected)){s.leases=s.leases||{};s.leases[i+','+j]={fill:0,wear:0}}if(t.premiumFloor)selected='office';notice(t.name+'が完成しました。'+(isLease(selected)?'入居者を募集中です。':''));gameSound(t===types.amusement?'fanfare':t.premiumFloor?'premium':'build');render();if(t===types.amusement)launchParkFireworks()}
 function liftUpgradeCost(level){return level>=2?30000:15000}
 function upgradeLift(side){let key=side==='right'?'extraLiftLevel':'liftLevel';if(s[key]>=3)return notice('この箱は最大のLv.3です。');let cost=liftUpgradeCost(s[key]);if(s.cash<cost)return notice('Lv.'+(s[key]+1)+'への大型化には'+yen(cost)+'必要です。');s.cash-=cost;s[key]++;gameSound('lift');notice((side==='right'?'右':'左')+'の箱を大型化しました。');render()}
-$('#insert-lift').onclick=()=>{if(s.liftCols.length)upgradeLift('right');else{s.extraLiftLevel=1;insertLift(s.width)}};$('#expand').onclick=()=>{if(s.floors.length>=101)return notice('最高102階に到達しました！');if(s.cash<12000*s.width/6)return notice('増設には'+yen(12000*s.width/6)+'必要です。');s.cash-=12000*s.width/6;let row=Array(s.width).fill(null);s.floors.push(row);gameSound('floor');notice('新しいフロアが完成。空き区画に建設できます。');render()};$('#upgrade').onclick=()=>upgradeLift('left');$('#pause').onclick=()=>{paused=!paused;$('#pause').innerHTML='<span aria-hidden="true">'+(paused?'▶':'Ⅱ')+'</span><span class="pause-label"> '+(paused?'再開':'一時停止')+'</span>';$('#pause').setAttribute('aria-label',paused?'再開':'一時停止');$('#pause').title=paused?'再開':'一時停止';render()};$('#speed').onclick=()=>{speed=speed===1?3:speed===3?10:1;$('#speed').textContent=speed+'×';render()};$('#help').onclick=()=>$('#dialog').showModal();$('#reset').onclick=()=>{if(confirm('保存したビルをリセットしますか？')){if(cancelParkFireworks)cancelParkFireworks();s={cash:32000,day:1,hour:8,width:6,floors:[['office','~','home','~','cafe',null],Array(6).fill(null)],lifts:1,liftLevel:1,extraLiftLevel:1,liftCols:[],peakPopulation:0,leases:{},leaseAgeVersion:2,premiumHeightVersion:1,maxFloors:3,occupancy:1,insolventDays:0};notice('新しいビルの経営をはじめましょう。');render()}};setInterval(()=>{if(paused||chartOpen||mobileOverlayOpen||pageInactive()||inspectPaused||$('#dialog').open)return;for(let i=0;i<speed;i++){s.hour++;advanceSatisfaction();if(s.hour>=24){s.hour=0;let daily=metrics();s.day++;s.cash=Math.max(0,s.cash+daily.profit);evolveTenancy(daily);advanceClinics();let sales=settleHomeSales();s.cash+=sales;if(sales&&s.cash>0)s.insolventDays=0;let eventIncome=s.eventReceipts?.[s.day-1]||0;let p=daily.profit+sales+eventIncome;recordDaily(s.day-1,{...daily,income:daily.income+sales+eventIncome});financeNotice(`${s.day-1}日目の決算：収入 ${yen(daily.income+sales+eventIncome)}／維持費 ${yen(daily.upkeep)}／収支 ${p>=0?'+':''}${yen(p)}${eventIncome?'（イベント収入 '+yen(eventIncome)+'を含む）':''}`)}updateMorningTicker()}render()},2400);render();
+$('#insert-lift').onclick=()=>{if(s.liftCols.length)upgradeLift('right');else{s.extraLiftLevel=1;insertLift(s.width)}};$('#expand').onclick=()=>{if(s.floors.length>=101)return notice('最高102階に到達しました！');if(s.cash<12000*s.width/6)return notice('増設には'+yen(12000*s.width/6)+'必要です。');s.cash-=12000*s.width/6;let row=Array(s.width).fill(null);s.floors.push(row);gameSound('floor');notice('新しいフロアが完成。空き区画に建設できます。');render()};$('#upgrade').onclick=()=>upgradeLift('left');$('#pause').onclick=()=>{paused=!paused;$('#pause').innerHTML='<span aria-hidden="true">'+(paused?'▶':'Ⅱ')+'</span><span class="pause-label"> '+(paused?'再開':'一時停止')+'</span>';$('#pause').setAttribute('aria-label',paused?'再開':'一時停止');$('#pause').title=paused?'再開':'一時停止';render()};$('#speed').onclick=()=>{speed=speed===1?3:speed===3?10:1;$('#speed').textContent=speed+'×';render()};$('#help').onclick=()=>$('#dialog').showModal();$('#reset').onclick=()=>{if(confirm('保存したビルをリセットしますか？'))resetTower()};setInterval(()=>{if(paused||chartOpen||mobileOverlayOpen||pageInactive()||inspectPaused||$('#dialog').open)return;for(let i=0;i<speed;i++){s.hour++;advanceSatisfaction();if(s.hour>=24){s.hour=0;let daily=metrics();s.day++;s.cash=Math.max(0,s.cash+daily.profit);evolveTenancy(daily);advanceClinics();let sales=settleHomeSales();s.cash+=sales;if(sales&&s.cash>0)s.insolventDays=0;let eventIncome=s.eventReceipts?.[s.day-1]||0;let p=daily.profit+sales+eventIncome;recordDaily(s.day-1,{...daily,income:daily.income+sales+eventIncome});financeNotice(`${s.day-1}日目の決算：収入 ${yen(daily.income+sales+eventIncome)}／維持費 ${yen(daily.upkeep)}／収支 ${p>=0?'+':''}${yen(p)}${eventIncome?'（イベント収入 '+yen(eventIncome)+'を含む）':''}`)}updateMorningTicker()}render()},2400);render();
 
 // One persistent car per shaft, animated across the whole building.
 function elevatorDemand(hour=s.hour){let demand=[];s.floors.forEach((floor,i)=>floor.forEach((t,j)=>{if(!types[t]||t==='elevator')return;let [mode,label,n]=activity(t,hour,i,j);if(!n||mode==='quiet'||mode==='relax')return;let weight=mode==='working'?1:n;demand.push({floor:i+1,weight,mode,label})}));return demand}
@@ -277,7 +279,7 @@ if(typeof ResizeObserver==='function'&&typeof requestAnimationFrame==='function'
 }
 
 // Background tabs and suspended pages do not advance the simulation.
-function pageInactive(){return pageSuspended||document.hidden===true||document.visibilityState==='hidden'}
+function pageInactive(){return titleScreenOpen||pageSuspended||document.hidden===true||document.visibilityState==='hidden'}
 function syncPageVisibility(){animationEpoch++;render()}
 document.addEventListener('visibilitychange',syncPageVisibility);
 if(typeof window!=='undefined'){window.addEventListener('pagehide',()=>{pageSuspended=true;animationEpoch++;save()});window.addEventListener('pageshow',()=>{pageSuspended=false;syncPageVisibility()})}
@@ -294,3 +296,21 @@ sparks=sparks.filter(p=>{p.life-=dt;if(p.life<=0)return false;p.px=p.x;p.py=p.y;
 }
 
 $('#bulk-repair').onclick=repairAllRooms;$('#mobile-bulk-repair').onclick=repairAllRooms;
+
+function resetTower(){if(cancelParkFireworks)cancelParkFireworks();s={cash:32000,day:1,hour:8,width:6,floors:[['office','~','home','~','cafe',null],Array(6).fill(null)],lifts:1,liftLevel:1,extraLiftLevel:1,liftCols:[],peakPopulation:0,leases:{},leaseAgeVersion:2,premiumHeightVersion:1,maxFloors:3,occupancy:1,insolventDays:0};notice('新しいビルの経営をはじめましょう。');render()}
+
+function installTitleMenu(){
+ const screen=document.querySelector('#title-screen'),continueButton=document.querySelector('#title-continue');
+ const underlying=[document.querySelector('body > header'),document.querySelector('#hud'),document.querySelector('body > main'),document.querySelector('.mobile-toolbar'),document.querySelector('.world-zoom-controls')].filter(Boolean);
+ underlying.forEach(element=>element.inert=true);
+ continueButton.disabled=!hasSavedGame;
+ if(!hasSavedGame)continueButton.setAttribute('aria-describedby','title-no-save');
+ document.querySelector('#title-no-save').hidden=hasSavedGame;
+
+ function enterGame(startNew){titleScreenOpen=false;screen.hidden=true;underlying.forEach(element=>element.inert=false);animationEpoch++;clearTickerMessages();if(startNew)resetTower();else render();}
+ document.querySelector('#title-new').addEventListener('click',()=>{if(hasSavedGame&&!confirm('新しいそらの塔を始めると、今のセーブデータが上書きされます。よろしいですか？'))return;enterGame(true)});
+ continueButton.addEventListener('click',()=>{if(hasSavedGame)enterGame(false)});
+ document.querySelector('#title-settings').addEventListener('click',()=>document.querySelector('#audio-settings')?.click());
+ document.querySelector('#title-help').addEventListener('click',()=>document.querySelector('#dialog').showModal());
+}
+installTitleMenu();

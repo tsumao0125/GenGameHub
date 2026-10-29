@@ -1,0 +1,21 @@
+/* Startup menu is separate from the simulation and can scroll on small screens. */
+.title-screen { position:fixed; inset:0; z-index:100; overflow:auto; overscroll-behavior:contain; display:grid; place-items:center; padding:24px 20px; background:linear-gradient(165deg,#d4eae5 0%,#edf1dd 58%,#f6ead5 100%); color:#315e50; }
+.title-screen[hidden] { display:none; }
+.title-card { width:min(100%,430px); text-align:center; margin:auto; }
+.title-art { width:min(270px,58vw); margin:0 auto 5px; }
+.title-art img { display:block; width:100%; height:auto; }
+.title-kicker { margin:0 0 8px; color:#7d9b89; font-size:9px; letter-spacing:2.5px; font-weight:700; }
+.title-content h1 { margin:0; font-size:clamp(35px,8vw,48px); letter-spacing:.12em; line-height:1.2; font-weight:700; color:#2c6b5a; }
+.title-subtitle { margin:12px 0 23px; font-size:13px; color:#688878; }
+.title-menu { width:min(320px,100%); margin:auto; display:grid; gap:9px; }
+.title-menu button { width:100%; min-height:52px; border-radius:13px; border:1px solid #b9d1bc; background:#f8faf2eF; color:#3a6d59; font-weight:700; font-size:15px; box-shadow:0 3px 0 #c1d4c14d; }
+.title-menu button:hover { background:#e6f0de; }
+.title-menu button:focus-visible { outline:3px solid #d89460; outline-offset:2px; }
+.title-menu .title-new { background:#2c6b58; color:#fffdf2; border-color:#2c6b58; }
+.title-menu .title-new:hover { background:#3a806a; }
+.title-menu button:disabled { opacity:.48; cursor:default; }
+.title-continue-detail { font-size:10px; color:#7d9686; line-height:1.4; }
+.title-secondary { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+.title-secondary button { min-height:48px; font-size:13px; }
+@media(max-height:650px) { .title-screen { padding:16px; } .title-art { width:min(205px,38vw); } .title-content h1 { font-size:34px; } .title-subtitle { margin:7px 0 14px; } .title-menu { gap:6px; } .title-menu button { min-height:46px; } }
+@media(max-height:500px) and (min-width:500px) { .title-card { width:min(620px,100%); display:grid; grid-template-columns:200px 1fr; align-items:center; gap:18px; } .title-art { width:200px; margin:0; } .title-subtitle { margin-bottom:9px; } .title-menu { gap:5px; } .title-menu button { min-height:42px; } .title-secondary button { min-height:42px; } }

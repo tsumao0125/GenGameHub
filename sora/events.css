@@ -75,3 +75,11 @@ body > header #clock { display:flex; align-items:center; flex-wrap:wrap; column-
 /* The seasonal date and time stay on one line. */
 .seasonal-front-status .season-time { display:inline; margin-left:5px; }
 @media(max-width:400px) { .seasonal-front-status.with-autumn { top:72px; max-width:calc(100% - 24px); } }
+
+/* Place the autumn announcement below the seasonal date on every screen. */
+.seasonal-front-status { flex-direction:column; align-items:flex-end; gap:4px; }
+.seasonal-front-status .autumn-cafe-indicator { flex:none; max-width:100%; }
+@media(max-width:400px) { .seasonal-front-status.with-autumn { top:14px; max-width:calc(100% - 178px); } }
+
+.seasonal-front-status.with-autumn { max-width:calc(100% - 190px); }
+@media(max-width:400px) { .seasonal-front-status.with-autumn { max-width:calc(100% - 190px); } }
