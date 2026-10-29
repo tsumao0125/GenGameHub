@@ -7,6 +7,14 @@
     body > main { grid-row:3; }
     body > #game-ticker { grid-row:4; }
     body > .mobile-toolbar { grid-row:5; }
+    @media (max-width:760px), (pointer:coarse) and (max-height:600px) {
+      body { grid-template-rows:auto minmax(0,1fr) auto auto; }
+      body > .site-header { display:none; }
+      body > header:not(.site-header) { grid-row:1; }
+      body > main { grid-row:2; }
+      body > #game-ticker { grid-row:3; }
+      body > .mobile-toolbar { grid-row:4; }
+    }
   `;
   document.head.appendChild(style);
 })();
